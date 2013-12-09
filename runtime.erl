@@ -1,5 +1,5 @@
 -module(runtime).
--export([start/0, restart/0, exec/1, new/1, send/2]).
+-export([start/0, restart/0, exec/1, new/1, send/2, newG/1]).
 
 %%%=========================================================================
 %%%  API
@@ -9,20 +9,26 @@ start() ->
     % register, whereis はグローバル変数みたいなもの。これを使ってしまっている。
     MaybePid = whereis(exec),
     if MaybePid == undefined -> register(exec, core:new(fun exec/1));
-       true                  -> already_started
+       true                  -> {already_started, MaybePid}
     end.
 
 restart() ->
     MaybePid = whereis(exec),
     if MaybePid /= undefined -> exit(MaybePid, kill); true -> true end,
     catch unregister(exec), 
-    register(exec, core:new(fun exec/1)).
+    Pid = core:new(fun exec/1),
+    register(exec, Pid),
+    Pid.
 
 new(F) ->
     core:new(meta1([], F, dormant)).
 
+%% send V to {N1, ... {Nn, M}} is 
 send(Dest, Msg) ->
-    Dest ! {mesg, Msg}.
+    case Dest of 
+	{N, _Dest} -> _Dest ! {mesg, {N, Msg}};
+	_ -> Dest ! {mesg, Msg}
+    end.
 
 put(Msg, Self) ->
     send(Self, Msg).
@@ -31,30 +37,30 @@ put(Msg, Self) ->
 %% self() ->
 %%     % check if in the exec actor
 
+newG(Fs) ->
+    N = length(Fs),
+    core:new(metaG(replicate(N, []), Fs, replicate(N, dormant))).
+
 %%%=========================================================================
 %%%  Internal Function
 %%%=========================================================================
 
 exec(Arg) ->
-    %% erlang:display("exec receiveed msg"),
     case Arg of
 	{apply, F, V, From} ->
 	    apply(F, [V, From]),
 	    From ! 'end',
 	    core:become(fun exec/1);
 	{apply, F, V, From, N} ->
-	    apply(F, [V]),
+	    apply(F, [V, {N, From}]),
 	    From ! {'end', N},
 	    core:become(fun exec/1)
     end.
 
 meta1(Q, F, S) ->
     fun (M) ->
-	    %% erlang:display("meta1 receiveed following msg"),
-	    %% erlang:display(M),
 	    case M of
 		{mesg, V} ->
-		    %% erlang:display("meta1 matched mesg clause"),
 		    case S of
 			dormant ->
 			    self() ! 'begin',
@@ -63,8 +69,6 @@ meta1(Q, F, S) ->
 			    core:become(meta1(Q++[V], F, active))
 		    end;
 		'begin' ->
-		    %% erlang:display("meta1 matched begin clause"),
-		    %% erlang:display(Q),
 		    case Q of
 			[V|_Q] ->
 			    exec ! {apply, F, V, self()},
@@ -86,7 +90,7 @@ metaG(Qs, Fs, Ss) ->
 		{mesg, {N, V}} ->
 		    NthSs = nth(N, Ss),
 		    case NthSs of
-			dormat ->
+			dormant ->
 			    self() ! {'begin', N},
 			    core:become(metaG(substNth(N, nth(N,Qs)++[V], Qs), Fs, substNth(N, active, Ss)));
 			active ->
@@ -100,10 +104,10 @@ metaG(Qs, Fs, Ss) ->
 		    end;
 		{'end', N} ->
 		    case nth(N, Qs) of
-			[] -> core:become(meta1(Qs, Fs, substNth(N, dormant, Ss)));
+			[] -> core:become(metaG(Qs, Fs, substNth(N, dormant, Ss)));
 			[_|_] ->
 			    self() ! {'begin', N},
-			    core:become(meta1(Qs, Fs, Ss))
+			    core:become(metaG(Qs, Fs, Ss))
 		    end
 	    end
     end.
@@ -120,4 +124,10 @@ substNth(N, V, Ls) ->
     case {Ls, N} of
 	{[_|T], 1} -> [V|T];
 	{[H|T], N} when N > 1 -> [H|substNth(N-1, V, T)]
+    end.
+
+replicate(N, V) ->
+    case N of
+	0 -> [];
+	N when N > 0 -> [V|replicate(N-1, V)]
     end.
