@@ -1,5 +1,5 @@
 -module(runtime).
--export([start/0, restart/0, exec/1, new/1, send/2, newG/1]).
+-export([start/0, restart/0, exec/1, new/1, send/2, newG/1, new/2]).
 
 %%%=========================================================================
 %%%  API
@@ -40,6 +40,11 @@ put(Msg, Self) ->
 newG(Fs) ->
     N = length(Fs),
     core:new(metaG(replicate(N, []), Fs, replicate(N, dormant))).
+
+new({N, MetaG}, F) ->
+    MetaG ! {new, F, self()},
+    % becomeの返り値を利用してしまっている
+    core:become(fun(X) -> X end).
 
 %%%=========================================================================
 %%%  Internal Function
@@ -108,7 +113,14 @@ metaG(Qs, Fs, Ss) ->
 			[_|_] ->
 			    self() ! {'begin', N},
 			    core:become(metaG(Qs, Fs, Ss))
-		    end
+		    end;
+		{new, F, From} ->
+		    N = length(Qs) + 1,
+		    From ! {N, self()},
+		    core:become(metaG(Qs++[[]], Fs++[F], Ss++[dormant]));
+		inspect -> % for debug
+		    erlang:display({Qs, Fs, Ss}),
+		    core:become(metaG(Qs, Fs, Ss))
 	    end
     end.
 

@@ -26,9 +26,16 @@ fact({N, C}) ->
 %%% ========================================================================
 printerM(X, _) -> io:format("~p~n",[X]).
 
+printerMG(X, _) -> io:format("~p~n",[X]).
+
 factM({N, C}, Self) ->
     if N == 0 -> runtime:send(C, 1);
        true   -> runtime:send(Self, {N-1, runtime:new(fun(V, _) -> runtime:send(C, N * V) end)})
+    end.
+
+factMG({N, C}, Self) ->
+    if N == 0 -> runtime:send(C, 1);
+       true   -> runtime:send(Self, {N-1, runtime:new(Self, fun(V, _) -> runtime:send(C, N * V) end)})
     end.
 
 %% Per-Actor
@@ -46,6 +53,8 @@ factM({N, C}, Self) ->
 %% > Printer = {1, PrinterG}.
 %% > Fact = {1, FactG}.
 %% > runtime:send(Fact, {10, Printer}).
+
+%% > runtime:send({1, FactG}, {10, {1, PrinterG}}).
 
 %% Q. 自分自身のメタアクターをどう認識させるか？（メタアクターとどう通信するか？）
 %% - 引数に入れる
