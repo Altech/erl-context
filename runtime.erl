@@ -1,27 +1,12 @@
 -module(runtime).
--export([start/0, restart/0, exec/1, new/1, send/2, newG/1, new/2]).
+-export([exec/1, new/1, send/2, newG/1, new/2]).
 
 %%%=========================================================================
 %%%  API
 %%%=========================================================================
 
-start() ->
-    % register, whereis はグローバル変数みたいなもの。これを使ってしまっている。
-    MaybePid = whereis(exec),
-    if MaybePid == undefined -> register(exec, core:new(fun exec/1));
-       true                  -> {already_started, MaybePid}
-    end.
-
-restart() ->
-    MaybePid = whereis(exec),
-    if MaybePid /= undefined -> exit(MaybePid, kill); true -> true end,
-    catch unregister(exec), 
-    Pid = core:new(fun exec/1),
-    register(exec, Pid),
-    Pid.
-
 new(F) ->
-    core:new(meta1([], F, dormant)).
+    core:new(meta1([], F, dormant, core:new(fun exec/1))).
 
 %% send V to {N1, ... {Nn, M}} is 
 send(Dest, Msg) ->
@@ -36,7 +21,7 @@ send(Dest, Msg) ->
 
 newG(Fs) ->
     N = length(Fs),
-    core:new(metaG(replicate(N, []), Fs, replicate(N, dormant))).
+    core:new(metaG(replicate(N, []), Fs, replicate(N, dormant), core:new(fun exec/1))).
 
 new({N, MetaG}, F) ->
     MetaG ! {new, F, self()},
@@ -59,34 +44,34 @@ exec(Arg) ->
 	    core:become(fun exec/1)
     end.
 
-meta1(Q, F, S) ->
+meta1(Q, F, S, E) ->
     fun (M) ->
 	    case M of
 		{mesg, V} ->
 		    case S of
 			dormant ->
 			    self() ! 'begin',
-			    core:become(meta1(Q++[V], F, active));
+			    core:become(meta1(Q++[V], F, active, E));
 			active ->
-			    core:become(meta1(Q++[V], F, active))
+			    core:become(meta1(Q++[V], F, active, E))
 		    end;
 		'begin' ->
 		    case Q of
 			[V|_Q] ->
-			    exec ! {apply, F, V, self()},
-			    core:become(meta1(_Q, F, S))
+			    E ! {apply, F, V, self()},
+			    core:become(meta1(_Q, F, S, E))
 		    end;
 		'end' ->
 		    case Q of
-			[] -> core:become(meta1(Q, F, dormant));
+			[] -> core:become(meta1(Q, F, dormant, E));
 			[_|_] ->
 			    self() ! 'begin',
-			    core:become(meta1(Q, F, S))
+			    core:become(meta1(Q, F, S, E))
 		    end
 	    end
     end.
 
-metaG(Qs, Fs, Ss) ->
+metaG(Qs, Fs, Ss, E) ->
     fun (M) ->
 	    case M of
 		{mesg, {N, V}} ->
@@ -94,30 +79,30 @@ metaG(Qs, Fs, Ss) ->
 		    case NthSs of
 			dormant ->
 			    self() ! {'begin', N},
-			    core:become(metaG(substNth(N, nth(N,Qs)++[V], Qs), Fs, substNth(N, active, Ss)));
+			    core:become(metaG(substNth(N, nth(N,Qs)++[V], Qs), Fs, substNth(N, active, Ss), E));
 			active ->
-			    core:become(metaG(substNth(N, nth(N,Qs)++[V], Qs), Fs, substNth(N, active, Ss)))
+			    core:become(metaG(substNth(N, nth(N,Qs)++[V], Qs), Fs, substNth(N, active, Ss), E))
 		    end;
 		{'begin', N} ->
 		    case nth(N, Qs) of
 			[V|_Q] ->
-			    exec ! {apply, nth(N, Fs), V, self(), N},
-			    core:become(metaG(substNth(N, _Q, Qs), Fs, Ss))
+			    E ! {apply, nth(N, Fs), V, self(), N},
+			    core:become(metaG(substNth(N, _Q, Qs), Fs, Ss, E))
 		    end;
 		{'end', N} ->
 		    case nth(N, Qs) of
-			[] -> core:become(metaG(Qs, Fs, substNth(N, dormant, Ss)));
+			[] -> core:become(metaG(Qs, Fs, substNth(N, dormant, Ss), E));
 			[_|_] ->
 			    self() ! {'begin', N},
-			    core:become(metaG(Qs, Fs, Ss))
+			    core:become(metaG(Qs, Fs, Ss, E))
 		    end;
 		{new, F, From} ->
 		    N = length(Qs) + 1,
 		    From ! {N, self()},
-		    core:become(metaG(Qs++[[]], Fs++[F], Ss++[dormant]));
+		    core:become(metaG(Qs++[[]], Fs++[F], Ss++[dormant], E));
 		inspect -> % for debug
 		    erlang:display({Qs, Fs, Ss}),
-		    core:become(metaG(Qs, Fs, Ss))
+		    core:become(metaG(Qs, Fs, Ss, E))
 	    end
     end.
 

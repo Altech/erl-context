@@ -39,7 +39,6 @@ factMG({N, C}, Self) ->
     end.
 
 %% Per-Actor
-%% > runtime:start().
 %% > Printer = runtime:new(fun v:printerM/2).
 %% > Fact = runtime:new(fun v:factM/2).
 %% > runtime:send(Fact, {10, Printer}).
@@ -47,9 +46,8 @@ factMG({N, C}, Self) ->
 %% 3628800
 
 %% A Composed Group-Wide Metalevel
-%% > runtime:start().
-%% > PrinterG = runtime:newG([fun v:printerM/2]).
-%% > FactG = runtime:newG([fun v:factM/2]).
+%% > PrinterG = runtime:newG([fun v:printerMG/2]).
+%% > FactG = runtime:newG([fun v:factMG/2]).
 %% > Printer = {1, PrinterG}.
 %% > Fact = {1, FactG}.
 %% > runtime:send(Fact, {10, Printer}).
