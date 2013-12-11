@@ -30,9 +30,6 @@ send(Dest, Msg) ->
 	_ -> Dest ! {mesg, Msg}
     end.
 
-put(Msg, Self) ->
-    send(Self, Msg).
-
 %% %% This will be called in exec actor.
 %% self() ->
 %%     % check if in the exec actor

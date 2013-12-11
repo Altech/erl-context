@@ -1,5 +1,5 @@
 -module(core).
--export([new/1, become/1, put/1, self/0, send/2]).
+-export([new/1, become/1, self/0, send/2]).
 -compile({no_auto_import,[self/0, send/2]}).
 
 new(Fun) ->
@@ -17,8 +17,5 @@ become(Fun) ->
 % Actually, use built-in self/0
 self() -> (fun erlang:self/0)().
 
-% Actually, use built-in send/2('!' operator)
+% Actually, use built-in send/2(via '!' operator)
 send(Pid, Msg) -> Pid ! Msg.
-
-put(Msg) ->
-    self() ! Msg.
