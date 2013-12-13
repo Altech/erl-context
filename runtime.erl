@@ -23,9 +23,12 @@ newG(Fs) ->
     N = length(Fs),
     core:new(metaG(replicate(N, []), Fs, replicate(N, dormant), core:new(fun exec/1))).
 
-new({N, MetaG}, F) ->
+new(F, {N, MetaG}) ->
     MetaG ! {new, F, self()},
-    % becomeの返り値を利用してしまっている
+    % becomeの返り値を利用してしまっている。
+    % newは生成したアクターのアドレスを即時に得ることができるという意味で同期的。
+    % 非同期オンリーの純粋なアクターモデルだと、newみたいなのをユーザー定義することができない？
+    % -> receiveみたいな同期のためのプリミティブを入れるか、becomeの後をシーケンシャル実行にする。
     core:become(fun(X) -> X end).
 
 %%%=========================================================================
@@ -34,31 +37,31 @@ new({N, MetaG}, F) ->
 
 exec(Arg) ->
     case Arg of
-	{apply, F, V, From} ->
-	    apply(F, [V, From]),
+	{apply, F, M, From} ->
+	    apply(F, [M, From]),
 	    From ! 'end',
 	    core:become(fun exec/1);
-	{apply, F, V, From, N} ->
-	    apply(F, [V, {N, From}]),
+	{apply, F, M, From, N} ->
+	    apply(F, [M, {N, From}]),
 	    From ! {'end', N},
 	    core:become(fun exec/1)
     end.
 
 meta1(Q, F, S, E) ->
-    fun (M) ->
-	    case M of
-		{mesg, V} ->
+    fun (RawM) ->
+	    case RawM of
+		{mesg, M} ->
 		    case S of
 			dormant ->
 			    self() ! 'begin',
-			    core:become(meta1(Q++[V], F, active, E));
+			    core:become(meta1(Q++[M], F, active, E));
 			active ->
-			    core:become(meta1(Q++[V], F, active, E))
+			    core:become(meta1(Q++[M], F, active, E))
 		    end;
 		'begin' ->
 		    case Q of
-			[V|_Q] ->
-			    E ! {apply, F, V, self()},
+			[M|_Q] ->
+			    E ! {apply, F, M, self()},
 			    core:become(meta1(_Q, F, S, E))
 		    end;
 		'end' ->
@@ -72,21 +75,20 @@ meta1(Q, F, S, E) ->
     end.
 
 metaG(Qs, Fs, Ss, E) ->
-    fun (M) ->
-	    case M of
-		{mesg, {N, V}} ->
-		    NthSs = nth(N, Ss),
-		    case NthSs of
+    fun (RawM) ->
+	    case RawM of
+		{mesg, {N, M}} ->
+		    case nth(N, Ss) of
 			dormant ->
 			    self() ! {'begin', N},
-			    core:become(metaG(substNth(N, nth(N,Qs)++[V], Qs), Fs, substNth(N, active, Ss), E));
+			    core:become(metaG(substNth(N, nth(N,Qs)++[M], Qs), Fs, substNth(N, active, Ss), E));
 			active ->
-			    core:become(metaG(substNth(N, nth(N,Qs)++[V], Qs), Fs, substNth(N, active, Ss), E))
+			    core:become(metaG(substNth(N, nth(N,Qs)++[M], Qs), Fs, substNth(N, active, Ss), E))
 		    end;
 		{'begin', N} ->
 		    case nth(N, Qs) of
-			[V|_Q] ->
-			    E ! {apply, nth(N, Fs), V, self(), N},
+			[M|_Q] ->
+			    E ! {apply, nth(N, Fs), M, self(), N},
 			    core:become(metaG(substNth(N, _Q, Qs), Fs, Ss, E))
 		    end;
 		{'end', N} ->

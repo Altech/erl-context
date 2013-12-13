@@ -35,7 +35,7 @@ factM({N, C}, Self) ->
 
 factMG({N, C}, Self) ->
     if N == 0 -> runtime:send(C, 1);
-       true   -> runtime:send(Self, {N-1, runtime:new(Self, fun(V, _) -> runtime:send(C, N * V) end)})
+       true   -> runtime:send(Self, {N-1, runtime:new(fun(V, _) -> runtime:send(C, N * V) end, Self)})
     end.
 
 %% Per-Actor
