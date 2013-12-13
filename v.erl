@@ -38,6 +38,12 @@ factMG({N, C}, Self) ->
        true   -> runtime:send(Self, {N-1, runtime:new(fun(V, _) -> runtime:send(C, N * V) end, Self)})
     end.
 
+printPrevNumGen(I) ->
+   fun (N, Self) ->
+	    io:format("Previous Number:~p~n",[I]),
+	    runtime:update_behavior(printPrevNumGen(N), Self)
+   end.
+    
 %% Per-Actor
 %% > Printer = runtime:new(fun v:printerM/2).
 %% > Fact = runtime:new(fun v:factM/2).
@@ -53,6 +59,13 @@ factMG({N, C}, Self) ->
 %% > runtime:send(Fact, {10, Printer}).
 
 %% > runtime:send({1, FactG}, {10, {1, PrinterG}}).
+
+%% Update behavior
+%% > G = runtime:newG([v:printPrevNumGen(1)]).
+%% > runtime:send({1, G}, 2).
+%% Previous Number:1
+%% > runtime:send({1, G}, 5).
+%% Previous Number:2
 
 %% Q. 自分自身のメタアクターをどう認識させるか？（メタアクターとどう通信するか？）
 %% - 引数に入れる

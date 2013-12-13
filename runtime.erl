@@ -1,5 +1,5 @@
 -module(runtime).
--export([exec/1, new/1, send/2, newG/1, new/2]).
+-export([exec/1, new/1, send/2, newG/1, new/2, update_behavior/2]).
 
 %%%=========================================================================
 %%%  API
@@ -30,6 +30,9 @@ new(F, {N, MetaG}) ->
     % 非同期オンリーの純粋なアクターモデルだと、newみたいなのをユーザー定義することができない？
     % -> receiveみたいな同期のためのプリミティブを入れるか、becomeの後をシーケンシャル実行にする。
     core:become(fun(X) -> X end).
+
+update_behavior(F, {N, MetaG}) ->
+    MetaG ! {update, N, F}.
 
 %%%=========================================================================
 %%%  Internal Function
@@ -102,6 +105,8 @@ metaG(Qs, Fs, Ss, E) ->
 		    N = length(Qs) + 1,
 		    From ! {N, self()},
 		    core:become(metaG(Qs++[[]], Fs++[F], Ss++[dormant], E));
+		{update, N, F} ->
+		    core:become(metaG(Qs, substNth(N, F, Fs), Ss, E));
 		inspect -> % for debug
 		    erlang:display({Qs, Fs, Ss}),
 		    core:become(metaG(Qs, Fs, Ss, E))
