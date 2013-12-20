@@ -1,0 +1,2 @@
+-define(send(Dest, Msg, Ctx), runtime_ctx:send(Dest, Msg, Ctx)).
+-define(newCtxG(Fs), runtime_ctx:newCtxG(Fs)).

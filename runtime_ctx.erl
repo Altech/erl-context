@@ -1,11 +1,11 @@
 -module(runtime_ctx).
--export([newCtx/1, send/2, send/3, new/3]).
+-export([newCtxG/1, send/2, send/3, new/3]).
 
 %%%=========================================================================
 %%%  API
 %%%=========================================================================
 
-newCtx(Fs) ->
+newCtxG(Fs) ->
     N = length(Fs),
     core:new(metaCtx(replicate(N, []), Fs, replicate(N, dormant), replicate(N, context:default()), core:new(fun exec/1))).
 
@@ -97,7 +97,6 @@ metaCtx(Qs, Fs, Ss, Cs, E) ->
 			[M|_Q] ->
 			    E ! {apply, nth(N, Fs), M, self(), nth(N, Cs), N},
 			    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, Cs, E))
-			    
 		    end;
 		{'end', N} ->
 		    case nth(N, Qs) of

@@ -97,8 +97,8 @@ factCtxG({N, C}, Self, Context) ->
     end.
 
 %% A Composed Group-Wide Metalevel
-%% > PrinterG = runtime_ctx:newCtx([fun v:printerCtxG/3]).
-%% > FactG = runtime_ctx:newCtx([fun v:factCtxG/3]).
+%% > PrinterG = runtime_ctx:newCtxG([fun v:printerCtxG/3]).
+%% > FactG = runtime_ctx:newCtxG([fun v:factCtxG/3]).
 %% > [Printer, Fact] = [{1, PrinterG}, {1, FactG}].
 %% > runtime:send(Fact, {10, Printer}).
-% f(), PrinterG = runtime_ctx:newCtx([fun v:printerCtxG/3]), FactG = runtime_ctx:newCtx([fun v:factCtxG/3]), Printer = {1, PrinterG}, Fact = {1, FactG}, runtime:send(Fact, {10, Printer}).
+% f(), PrinterG = runtime_ctx:newCtxG([fun v:printerCtxG/3]), FactG = runtime_ctx:newCtxG([fun v:factCtxG/3]), Printer = {1, PrinterG}, Fact = {1, FactG}, runtime:send(Fact, {10, Printer}).
