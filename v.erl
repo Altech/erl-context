@@ -41,7 +41,7 @@ factMG({N, C}, Self) ->
 printPrevNumGen(I) ->
    fun (N, Self) ->
 	    io:format("Previous Number:~p~n",[I]),
-	    runtime:update_behavior(printPrevNumGen(N), Self)
+	    runtime:change_behavior(printPrevNumGen(N), Self)
    end.
     
 %% Per-Actor
@@ -99,7 +99,6 @@ factCtxG({N, C}, Self, Context) ->
 %% A Composed Group-Wide Metalevel
 %% > PrinterG = runtime_ctx:newCtx([fun v:printerCtxG/3]).
 %% > FactG = runtime_ctx:newCtx([fun v:factCtxG/3]).
-%% > Printer = {1, PrinterG}.
-%% > Fact = {1, FactG}.
+%% > [Printer, Fact] = [{1, PrinterG}, {1, FactG}].
 %% > runtime:send(Fact, {10, Printer}).
 % f(), PrinterG = runtime_ctx:newCtx([fun v:printerCtxG/3]), FactG = runtime_ctx:newCtx([fun v:factCtxG/3]), Printer = {1, PrinterG}, Fact = {1, FactG}, runtime:send(Fact, {10, Printer}).
