@@ -26,8 +26,10 @@ send(Dest, Msg, Ctx) ->
 
 new(F, {N, MetaCtx}) ->
     MetaCtx ! {new, F, self()},
-    % becomeの返り値を利用してしまっている
     core:become(fun(X) -> X end).
+
+change_behavior(F, {N, MetaCtx}) ->
+    MetaCtx ! {update, N, F}.
 
 %%%=========================================================================
 %%%  Internal Function
@@ -113,6 +115,8 @@ metaCtx(Qs, Fs, Ss, Cs, E) ->
 		    N = length(Qs) + 1,
 		    From ! {N, self()},
 		    core:become(metaCtx(Qs++[[]], Fs++[F], Ss++[dormant], Cs++[Ctx], E));
+		{change_behavior, N, F} ->
+		    core:become(metaCtx(Qs, substNth(N, F, Fs), Ss, Cs, E));
 		inspect -> % for debug
 		    erlang:display({Qs, Fs, Ss, Cs}),
 		    core:become(metaCtx(Qs, Fs, Ss, Cs, E))
