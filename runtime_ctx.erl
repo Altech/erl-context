@@ -1,5 +1,5 @@
 -module(runtime_ctx).
--export([newCtxG/1, send/2, send/3, new/3]).
+-export([newCtxG/1, send/2, send/3, new/3, sendDelay/3, sendDelay/4, getState/1]).
 
 %%%=========================================================================
 %%%  API
@@ -31,6 +31,19 @@ new(F, {N, MetaCtx}) ->
 change_behavior(F, {N, MetaCtx}) ->
     MetaCtx ! {update, N, F}.
 
+% For experiments
+sendDelay(Dest, Msg, Ctx, Delay) ->
+    spawn(fun() -> 
+		  timer:sleep(Delay),
+		  send(Dest, Msg, Ctx)
+	  end).
+
+sendDelay(Dest, Msg, Delay) ->
+    spawn(fun() -> 
+		  timer:sleep(Delay),
+		  send(Dest, Msg)
+	  end).
+
 %%%=========================================================================
 %%%  Internal Function
 %%%=========================================================================
@@ -55,7 +68,7 @@ exec(Arg) ->
 
 metaCtx(Qs, Fs, Ss, Cs, E) ->
     fun (RawM) ->
-	    %% io:format("meatCtx received ~p.~n  state: ~p~n",[RawM, {Qs, Fs, Ss, Cs}]),
+	    %% io:format("metaCtx: received ~p~n", [RawM]),
 	    case RawM of
 		{mesg, {N, M}} ->
 		    NthSs = nth(N, Ss),
@@ -79,19 +92,21 @@ metaCtx(Qs, Fs, Ss, Cs, E) ->
 		{'begin', N} ->
 		    case nth(N, Qs) of
 			% Extension
-			[{{'$context', _} = C, X}|_Q] ->
-			    case context:compare(nth(N, Cs), C) == newer and lists:all(fun({_, _C}) -> context:compare(C, _C) == older end, _Q) of 
-				true  -> core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, substNth(N, C, Cs),E));
-				false -> core:become(metaCtx(substNth(N, _Q++[{C, X}], Qs), Fs, Ss, Cs,E))
-			    end;
-			% Extension
 			[{M, {'$context', _} = C}|_Q] ->
-			    E ! {apply, nth(N, Fs), M, self(), nth(N, Cs), N},
 			    case context:compare(nth(N, Cs), C) of
 				newer ->
+				    E ! {apply, nth(N, Fs), M, self(), C, N},
 				    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, substNth(N, C, Cs),E));
 				_ ->
+				    E ! {apply, nth(N, Fs), M, self(), nth(N, Cs), N},
 				    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, Cs,E))
+			    end;
+			% Extension
+			[{'$context', _} = C|_Q] ->
+			    self() ! {'end', N},
+			    case (context:compare(nth(N, Cs), C) == newer) and lists:all(fun({_, _C}) -> context:compare(C, _C) == older end, _Q) of 
+				true  -> core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, substNth(N, C, Cs),E));
+				false -> core:become(metaCtx(substNth(N, _Q++[C], Qs), Fs, Ss, Cs,E))
 			    end;
 			% 
 			[M|_Q] ->
@@ -118,11 +133,18 @@ metaCtx(Qs, Fs, Ss, Cs, E) ->
 		    core:become(metaCtx(Qs, substNth(N, F, Fs), Ss, Cs, E));
 		inspect -> % for debug
 		    erlang:display({Qs, Fs, Ss, Cs}),
+		    core:become(metaCtx(Qs, Fs, Ss, Cs, E));
+		{getState, From} -> % for debug
+		    From ! {Qs, Fs, Ss, Cs},
 		    core:become(metaCtx(Qs, Fs, Ss, Cs, E))
 	    end
     end.
 
 %% ----------- Utils -----------
+
+getState(G) ->
+    G ! {getState, self()},
+    receive X -> X end.
 
 nth(N, [H|T]) ->
     case N of

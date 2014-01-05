@@ -9,7 +9,7 @@ new(V) ->
 default() ->
     {'$context', {none, {0,0,0}}}.
 
-value({V, T}) -> V.
+value({'$context', {V, T}}) -> V.
 
 compare({'$context', C1}, {'$context', C2}) ->
     compare(C1, C2);
