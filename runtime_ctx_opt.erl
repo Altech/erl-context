@@ -1,5 +1,5 @@
 -module(runtime_ctx_opt).
--export([newG/1, send/2, new/1]).
+-export([newG/1, send/2, new/1, sendContext/2, sendDelay/3, sendContextDelay/3]).
 
 %%%=========================================================================
 %%%  API
@@ -21,10 +21,45 @@ newG(Fs) ->
 send(Dest, Msg) ->    
     case Dest of 
 	{N, _Dest} -> case get(context) of
-			  undefined -> _Dest ! {mesg, {N, Msg}}; 
-			  _ ->         _Dest ! {mesg, {N, Msg, get(context)}}
+			  undefined -> _Dest ! {mesg, {N, Msg}};
+			  _ ->         _Dest ! {mesg, {N, Msg, get(context)}},
+			               put(sentMessages, [{Dest, Msg}| get(sentMessages)])
 		      end;
 	_ -> Dest ! {mesg, Msg}
+    end.
+
+sendContext(Dest, Context) ->    
+    case Dest of 
+	{N, _Dest} -> case get(context) of
+			  undefined -> _Dest ! {mesg, {N, Context}};
+			  _ ->         put(sentMessages, [{Dest, Context}| get(sentMessages)]),
+                                       _Dest ! {mesg, {N, Context}}
+		      end;
+	_ -> Dest ! {mesg, Context}
+    end.
+
+% For experiments
+sendDelay(Dest, Msg, Delay) ->
+    [PSelf, PContext, PSentMessages] = [get(self), get(context), get(sentMessages)],
+    From = self(),
+    spawn(fun() -> 
+		  timer:sleep(Delay),
+		  put(self, PSelf), put(context, PContext), put(sentMessages, PSentMessages),
+		  send(Dest, Msg)
+	  end),
+    case {Dest, get(context)} of 
+	{{N, _Dest}, {'$context', _}} -> put(sentMessages, [{Dest, Msg}| get(sentMessages)]); _ -> nil
+    end.
+
+sendContextDelay(Dest, Context, Delay) ->
+    [PSelf, PContext, PSentMessages] = [get(self), get(context), get(sentMessages)],
+    spawn(fun() ->
+		  timer:sleep(Delay),
+		  put(self, PSelf), put(context, PContext), put(sentMessages, PSentMessages),
+		  sendContext(Dest, Context)
+	  end),
+    case {Dest, get(context)} of 
+	{{N, _Dest}, {'$context', _}} -> put(sentMessages, [{Dest, Context}| get(sentMessages)]); _ -> nil
     end.
 
 %%%=========================================================================
@@ -50,8 +85,9 @@ exec(Arg) ->
 	{apply, F, M, From, Ctx, N} ->
 	    put(self, {N, From}),
 	    put(context, Ctx),
+	    put(sentMessages, []),
 	    apply(F, [M]),
-	    From ! {'end', N},
+	    From ! {'end', N, get(sentMessages)},
 	    core:become(fun exec/1)
     end.
 
@@ -81,34 +117,34 @@ metaCtx(Qs, Fs, Ss, Cs, Ls, E) ->
 		    case Q of
 			% Extension
 			[{M, {'$context', _} = WithC}|_Q] ->
+			    NewLs = substNth(N, log:logBefore(L, M, C, F), Ls),
 			    case context:compare(C, WithC) of
 			    	newer ->
-				    NewLs = substNth(N, log:logBefore(L, M, WithC, F), Ls),
 			    	    E ! {apply, F, M, self(), WithC, N},
 			    	    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, substNth(N, WithC, Cs), NewLs, E));
 			    	_ ->
-				    NewLs = substNth(N, log:logBefore(L, M, C, F), Ls),
 			    	    E ! {apply, F, M, self(), C, N},
 			    	    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, Cs, NewLs, E))
 			    end;
-			%% % Extension
-			%% [{'$context', _} = NewC|_Q] ->
-			%%     self() ! {'end', N},
-			%%     case (context:compare(C, NewC) == newer) and lists:all(fun({_, _C}) -> context:compare(C, _C) == older end, _Q) of 
-			%%     	true  -> 
-			%% 	    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, substNth(N, NewC, Cs), substNth(N, log:logBefore(L, NewC, C, F), Ls), E));
-			%%     	false -> 
-			%% 	    core:become(metaCtx(substNth(N, _Q++[NewC], Qs), Fs, Ss, Cs, Ls, E))
-			%%     end;
+			% Extension
+			[{'$context', _} = NewC|_Q] ->
+			    self() ! {'end', N, []},
+			    case (context:compare(C, NewC) == newer) and lists:all(fun({_, _C}) -> context:compare(C, _C) == older end, _Q) of 
+			    	true  -> 
+				    NewLs = substNth(N, log:logBefore(L, NewC, C, F), Ls),
+				    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, substNth(N, NewC, Cs), substNth(N, log:logBefore(L, NewC, C, F), Ls), E));
+			    	false -> 
+				    core:become(metaCtx(substNth(N, _Q++[NewC], Qs), Fs, Ss, Cs, Ls, E))
+			    end;
 			% Original plus logging
 			[M|_Q] ->
 			    NewLs = substNth(N, log:logBefore(L, M, C, F), Ls),
 			    E ! {apply, F, M, self(), C, N},
 			    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, Cs, NewLs, E))
 		    end;
-		{'end', N} ->
+		{'end', N, Ms} ->
 		    io:format("Log: ~p~n", [nth(N,Ls)]),
-		    NewLs = substNth(N, log:logAfter(nth(N,Ls), nth(N,Cs), nth(N,Fs)), Ls),
+		    NewLs = substNth(N, log:logAfter(nth(N,Ls), nth(N,Cs), nth(N,Fs), Ms), Ls),
 		    case nth(N, Qs) of
 			[] -> core:become(metaCtx(Qs, Fs, substNth(N, dormant, Ss), Cs, NewLs, E));
 			[_|_] ->

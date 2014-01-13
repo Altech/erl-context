@@ -1,8 +1,8 @@
 -module(fact).
 -compile([export_all]).
 
--include("runtime.hrl").
-%% -include("runtime_ctx_opt.hrl").
+%% -include("runtime.hrl").
+-include("runtime_ctx_opt.hrl").
 
 printerG(X) -> io:format("~p~n",[X]).
 
