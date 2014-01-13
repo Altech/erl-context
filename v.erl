@@ -85,20 +85,3 @@ printPrevNumGen(I) ->
 %% - こういうメタ機構を実際に使う場合、ユーザー定義のノーテーションだが組み込み構文っぽく見せられる機構（あるいは、ある種の演算子の意味を再定義する機能）が必須（e.g. runtime:send/2）
 
 %% - エラー時に正しく状態を元に戻す処理
-
-%%% ========================================================================
-%%% Example by runtime_ctx
-%%% ========================================================================
-printerCtxG(X, _, _) -> io:format("~p~n",[X]).
-
-factCtxG({N, C}, Self, Context) ->
-    if N == 0 -> runtime_ctx:send(C, 1, Context);
-       true   -> runtime_ctx:send(Self, {N-1, runtime_ctx:new(fun(V, _, _) -> runtime:send(C, N * V) end, Self, Context)}, Context)
-    end.
-
-%% A Composed Group-Wide Metalevel
-%% > PrinterG = runtime_ctx:newCtxG([fun v:printerCtxG/3]).
-%% > FactG = runtime_ctx:newCtxG([fun v:factCtxG/3]).
-%% > [Printer, Fact] = [{1, PrinterG}, {1, FactG}].
-%% > runtime:send(Fact, {10, Printer}).
-% f(), PrinterG = runtime_ctx:newCtxG([fun v:printerCtxG/3]), FactG = runtime_ctx:newCtxG([fun v:factCtxG/3]), Printer = {1, PrinterG}, Fact = {1, FactG}, runtime:send(Fact, {10, Printer}).

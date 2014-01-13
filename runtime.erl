@@ -1,12 +1,22 @@
 -module(runtime).
--export([new/1, send/2, newG/1, new/2, change_behavior/2]).
+-export([new/1, send/2, newG/1, usr_self/0, change_behavior/2]).
 
 %%%=========================================================================
 %%%  API
 %%%=========================================================================
 
 new(F) ->
-    core:new(meta1([], F, dormant, core:new(fun exec/1))).
+    case get(self) of
+	undefined -> 
+	    core:new(meta1([], F, dormant, core:new(fun exec/1)));
+	{_, MetaG} ->
+	    MetaG ! {new, F, self()},
+	    core:become(fun(X) -> X end)
+    end.
+
+newG(Fs) ->
+    N = length(Fs),
+    core:new(metaG(replicate(N, []), Fs, replicate(N, dormant), core:new(fun exec/1))).
 
 %% send V to {N1, ... {Nn, M}} is 
 send(Dest, Msg) ->
@@ -15,17 +25,11 @@ send(Dest, Msg) ->
 	_ -> Dest ! {mesg, Msg}
     end.
 
-newG(Fs) ->
-    N = length(Fs),
-    core:new(metaG(replicate(N, []), Fs, replicate(N, dormant), core:new(fun exec/1))).
-
-new(F, {N, MetaG}) ->
-    MetaG ! {new, F, self()},
-    % becomeの返り値を利用してしまっている。
-    % newは生成したアクターのアドレスを即時に得ることができるという意味で同期的。
-    % 非同期オンリーの純粋なアクターモデルだと、newみたいなのをユーザー定義することができない？
-    % -> receiveみたいな同期のためのプリミティブを入れるか、becomeの後をシーケンシャル実行にする。
-    core:become(fun(X) -> X end).
+usr_self() -> 
+    case get(self) of
+	undefined -> self();
+	Self -> Self
+    end.
 
 change_behavior(F, {N, MetaG}) ->
     MetaG ! {update, N, F}.
@@ -35,15 +39,20 @@ change_behavior(F, {N, MetaG}) ->
 %%%=========================================================================
 
 exec(Arg) ->
+    %% io:format("engine received ~p.~n",[Arg]),
     case Arg of
+	% From Per-Actor Meta-Level
 	{apply, F, M, From} ->
-	    apply(F, [M, From]),
+	    put(self, From),
+	    apply(F, [M]),
 	    From ! 'end',
 	    core:become(fun exec/1);
+	% From Group-Wide Meta-Level
 	{apply, F, M, From, N} ->
-	    apply(F, [M, {N, From}]),
+	    put(self, {N, From}),
+	    apply(F, [M]),
 	    From ! {'end', N},
-	    core:become(fun exec/1)
+	    core:become(fun exec/1)    
     end.
 
 meta1(Q, F, S, E) ->

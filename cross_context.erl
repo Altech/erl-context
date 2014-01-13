@@ -2,7 +2,7 @@
 -compile(export_all).
 
 -include("runtime.hrl").
--include("runtime_ctx.hrl").
+-include("runtime_ctx_opt.hrl").
 
 %% Simple application for cross-context messages type (a)
 start(Type) ->

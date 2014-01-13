@@ -1,5 +1,5 @@
 -define(send(Dest, Msg), runtime:send(Dest, Msg)).
 -define(new(F), runtime:new(F)).
--define(new(F, Self), runtime:new(F, Self))
 -define(newG(Fs), runtime:newG(Fs)).
 -define(change_behavior(F, Self), runtime:change_behavior(F, Self)).
+-define(self(), runtime:usr_self()).

@@ -120,7 +120,7 @@ metaCtx(Qs, Fs, Ss, Cs, E) ->
 			    self() ! {'begin', N},
 			    core:become(metaCtx(Qs, Fs, Ss, Cs, E))
 		    end;
-		{new, F, From} ->
+		{new, F, From} -> % [TODO] Fix (refer ctx_opt)
 		    N = length(Qs) + 1,
 		    From ! {N, self()},
 		    core:become(metaCtx(Qs++[[]], Fs++[F], Ss++[dormant], Cs++[context:default()], E));
