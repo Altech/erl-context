@@ -22,8 +22,9 @@ send(Dest, Msg) ->
     case Dest of 
 	{N, _Dest} -> case get(context) of
 			  undefined -> _Dest ! {mesg, {N, Msg}, []};
-			  _ ->         _Dest ! {mesg, {N, Msg}, [{context, get(context)}]},
-			               put(sent_messages, [{Dest, Msg}| get(sent_messages)])
+			  _ ->         ID = gen_ID(),
+			               put(sent_messages, [{Dest, {ID, Msg}}| get(sent_messages)]),
+				       _Dest ! {mesg, {N, Msg}, [{id, ID}, {context, get(context)}]}
 		      end;
 	_ -> Dest ! {mesg, Msg, []}
     end.
@@ -32,34 +33,46 @@ sendContext(Dest, Context) ->
     case Dest of 
 	{N, _Dest} -> case get(context) of
 			  undefined -> _Dest ! {mesg, {N, Context}, [{context, message}]};
-			  _ ->         put(sent_messages, [{Dest, Context}| get(sent_messages)]),
-                                       _Dest ! {mesg, {N, Context}, [{context, message}]}
+			  _ ->         ID = gen_ID(),
+				       put(sent_messages, [{Dest, {ID, Context}}| get(sent_messages)]),
+                                       _Dest ! {mesg, {N, Context}, [{id, ID}, {context, message}]}
 		      end;
 	_ -> Dest ! {mesg, Context, []}
     end.
 
-% For experiments
-sendDelay(Dest, Msg, Delay) ->
-    [PSelf, PContext, PSentMessages] = [get(self), get(context), get(sent_messages)],
-    From = self(),
+% For Experiments
+sendDelay(Dest, Msg, Delay) ->    
+    PContext = get(context),
+    ID = gen_ID(),
     spawn(fun() -> 
 		  timer:sleep(Delay),
-		  put(self, PSelf), put(context, PContext), put(sent_messages, PSentMessages),
-		  send(Dest, Msg)
+		  case Dest of 
+		      {N, _Dest} -> case PContext of
+					undefined -> _Dest ! {mesg, {N, Msg}, []};
+					_ ->         _Dest ! {mesg, {N, Msg}, [{id, ID}, {context, PContext}]}
+				    end;
+		      _ -> Dest ! {mesg, Msg, []}
+		  end
 	  end),
     case {Dest, get(context)} of 
-	{{N, _Dest}, {'$context', _}} -> put(sent_messages, [{Dest, Msg}| get(sent_messages)]); _ -> nil
+	{{N, _Dest}, {'$context', _}} -> put(sent_messages, [{Dest, {ID, Msg}}| get(sent_messages)]); _ -> nil
     end.
 
-sendContextDelay(Dest, Context, Delay) ->
-    [PSelf, PContext, PSentMessages] = [get(self), get(context), get(sent_messages)],
-    spawn(fun() ->
+sendContextDelay(Dest, Context, Delay) ->    
+    PContext = get(context),
+    ID = gen_ID(),
+    spawn(fun() -> 
 		  timer:sleep(Delay),
-		  put(self, PSelf), put(context, PContext), put(sent_messages, PSentMessages),
-		  sendContext(Dest, Context)
+		  case Dest of 
+		      {N, _Dest} -> case PContext of
+					undefined -> _Dest ! {mesg, {N, Context}, [{context, message}]};
+					_ ->         _Dest ! {mesg, {N, Context}, [{id, ID}, {context, message}]}
+				    end;
+		      _ -> Dest ! {mesg, Context, []}
+		  end
 	  end),
     case {Dest, get(context)} of 
-	{{N, _Dest}, {'$context', _}} -> put(sent_messages, [{Dest, Context}| get(sent_messages)]); _ -> nil
+	{{N, _Dest}, {'$context', _}} -> put(sent_messages, [{Dest, {ID, Context}}| get(sent_messages)]); _ -> nil
     end.
 
 %%%=========================================================================
@@ -95,7 +108,6 @@ metaCtx(Qs, Fs, Ss, Cs, Ls, E) ->
     fun (RawM) ->
 	    io:format("metaCtx: received ~p~n", [RawM]),
 	    case RawM of
-		% Extension
 		{mesg, {N, M}, Ext} ->
 		    case nth(N, Ss) of
 			dormant ->
@@ -111,13 +123,13 @@ metaCtx(Qs, Fs, Ss, Cs, Ls, E) ->
 			    self() ! {'end', N, [{sent_messages, []}]},
 			    case (context:compare(C, M) == newer) and lists:all(fun({_, _C}) -> context:compare(C, _C) == older end, _Q) of 
 			    	true  -> 
-				    NewLs = substNth(N, log:logBefore(L, M, C, F), Ls),
+				    NewLs = substNth(N, log:logBefore(L, proplists:get_value(id, Ext), M, C, F), Ls),
 				    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, substNth(N, M, Cs), NewLs, E));
 			    	false -> 
 				    core:become(metaCtx(substNth(N, _Q++[M], Qs), Fs, Ss, Cs, Ls, E))
 			    end;
 			{'$context', _} = WithC ->
-			    NewLs = substNth(N, log:logBefore(L, M, C, F), Ls),
+			    NewLs = substNth(N, log:logBefore(L, proplists:get_value(id, Ext), M, C, F), Ls),
 			    case context:compare(C, WithC) of
 			    	newer ->
 			    	    E ! {apply, F, M, self(), WithC, N},
@@ -127,7 +139,7 @@ metaCtx(Qs, Fs, Ss, Cs, Ls, E) ->
 			    	    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, Cs, NewLs, E))
 			    end;
 			undefined ->
-			    NewLs = substNth(N, log:logBefore(L, M, C, F), Ls),
+			    NewLs = substNth(N, log:logBefore(L, proplists:get_value(id, Ext), M, C, F), Ls),
 			    E ! {apply, F, M, self(), C, N},
 			    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, Cs, NewLs, E))
 		    end;
@@ -173,4 +185,4 @@ replicate(N, V) ->
 	N when N > 0 -> [V|replicate(N-1, V)]
     end.
 
-genID() -> base64:encode(crypto:strong_rand_bytes(24)).
+gen_ID() -> base64:encode(crypto:strong_rand_bytes(4)).

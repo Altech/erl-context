@@ -5,7 +5,8 @@ start(S) ->
     put(stateOfGroupActor, S).
 
 showLog(L) ->
-    lists:map(fun({M, Prev, After, Ms}) ->
+    lists:map(fun({ID, M, Prev, After, Ms}) ->
+		      io:format(" ID: ~p~n", [ID]),
 		      io:format(" Message: ~p~n",[M]),
 		      io:format(" State(Prev):  ~p~n", [Prev]),
 		      io:format(" State(After): ~p~n", [After]),

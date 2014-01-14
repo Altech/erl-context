@@ -3,18 +3,18 @@
 
 %% log for an context-aware actor
 
-%% Log ::= [{Message ID, {Context, Function(Behavior)}, {Context, Function(Behavior)}, [{Influenced Actor, Message ID}]}]
+%% Log ::= [{Message ID, Message(for debug), {Context, Function(Behavior)}, {Context, Function(Behavior)}, [{Influenced Actor, Message ID}]}]
 %% Second of tuple is state before message-processing.
 %% Third of tuple is state after message-processing.
 
 new() ->
     [].
 
-logBefore(L, M, C, F) ->
-    [{M, {C, F}}|L].
+logBefore(L, ID, M, C, F) ->
+    [{ID, M, {C, F}}|L].
 
-logAfter([{M, Prev}|L], C, F, Ms) ->
-    [{M, Prev, {C, F}, Ms}|L].
+logAfter([{ID, M, Prev}|L], C, F, Ms) ->
+    [{ID, M, Prev, {C, F}, Ms}|L].
 
 %% cancel(L, N, MetaCtx) ->
 %%     case L of
