@@ -10,7 +10,7 @@ new(F) ->
 	undefined -> 
 	    core:new(meta1([], F, dormant, core:new(fun exec/1)));
 	{_, MetaG} ->
-	    MetaG ! {new, F, self()},
+	    MetaG ! {new, F, self(), []},
 	    core:become(fun(X) -> X end)
     end.
 
@@ -21,8 +21,8 @@ newG(Fs) ->
 %% send V to {N1, ... {Nn, M}} is 
 send(Dest, Msg) ->
     case Dest of 
-	{N, _Dest} -> _Dest ! {mesg, {N, Msg}};
-	_ -> Dest ! {mesg, Msg}
+	{N, _Dest} -> _Dest ! {mesg, {N, Msg}, []};
+	_ -> Dest ! {mesg, Msg, []}
     end.
 
 usr_self() -> 
@@ -51,7 +51,7 @@ exec(Arg) ->
 	{apply, F, M, From, N} ->
 	    put(self, {N, From}),
 	    apply(F, [M]),
-	    From ! {'end', N},
+	    From ! {'end', N, []},
 	    core:become(fun exec/1)    
     end.
 
@@ -85,28 +85,28 @@ meta1(Q, F, S, E) ->
 metaG(Qs, Fs, Ss, E) ->
     fun (RawM) ->
 	    case RawM of
-		{mesg, {N, M}} ->
+		{mesg, {N, M}, _} ->
 		    case nth(N, Ss) of
 			dormant ->
-			    self() ! {'begin', N},
+			    self() ! {'begin', N, []},
 			    core:become(metaG(substNth(N, nth(N,Qs)++[M], Qs), Fs, substNth(N, active, Ss), E));
 			active ->
 			    core:become(metaG(substNth(N, nth(N,Qs)++[M], Qs), Fs, substNth(N, active, Ss), E))
 		    end;
-		{'begin', N} ->
+		{'begin', N, _} ->
 		    case nth(N, Qs) of
 			[M|_Q] ->
 			    E ! {apply, nth(N, Fs), M, self(), N},
 			    core:become(metaG(substNth(N, _Q, Qs), Fs, Ss, E))
 		    end;
-		{'end', N} ->
+		{'end', N, _} ->
 		    case nth(N, Qs) of
 			[] -> core:become(metaG(Qs, Fs, substNth(N, dormant, Ss), E));
 			[_|_] ->
-			    self() ! {'begin', N},
+			    self() ! {'begin', N, []},
 			    core:become(metaG(Qs, Fs, Ss, E))
 		    end;
-		{new, F, From} ->
+		{new, F, From, _} ->
 		    N = length(Qs) + 1,
 		    From ! {N, self()},
 		    core:become(metaG(Qs++[[]], Fs++[F], Ss++[dormant], E));
