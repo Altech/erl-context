@@ -3,3 +3,4 @@
 -define(newG(Fs), runtime:newG(Fs)).
 -define(change_behavior(F, Self), runtime:change_behavior(F, Self)).
 -define(self(), runtime:usr_self()).
+-define(neighbor(N), runtime:neighbor(N)).

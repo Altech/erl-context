@@ -1,5 +1,5 @@
 -module(runtime).
--export([new/1, send/2, newG/1, usr_self/0, change_behavior/2]).
+-export([new/1, send/2, newG/1, usr_self/0, neighbor/1, change_behavior/2]).
 
 %%%=========================================================================
 %%%  API
@@ -29,6 +29,11 @@ usr_self() ->
     case get(self) of
 	undefined -> self();
 	Self -> Self
+    end.
+
+neighbor(N) ->
+    case get(self) of
+	{_, MetaG} -> {N, MetaG}
     end.
 
 change_behavior(F, {N, MetaG}) ->

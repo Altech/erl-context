@@ -106,7 +106,7 @@ exec(Arg) ->
 
 metaCtx(Qs, Fs, Ss, Cs, Ls, E) ->
     fun (RawM) ->
-	    io:format("metaCtx: received ~p~n", [RawM]),
+	    %% io:format("metaCtx: received ~p~n", [RawM]),
 	    case RawM of
 		{mesg, {N, M}, Ext} ->
 		    case nth(N, Ss) of
@@ -121,25 +121,32 @@ metaCtx(Qs, Fs, Ss, Cs, Ls, E) ->
 		    case proplists:get_value(context, Ext) of 
 			message ->
 			    self() ! {'end', N, [{sent_messages, []}]},
-			    case (context:compare(C, M) == newer) and lists:all(fun({_, _C}) -> context:compare(C, _C) == older end, _Q) of 
-			    	true  -> 
-				    NewLs = substNth(N, log:logBefore(L, proplists:get_value(id, Ext), M, C, F), Ls),
+			    case context:compare(C, M) of
+			    	newer ->
+				    NewLs = substNth(N, log:logBefore(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
 				    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, substNth(N, M, Cs), NewLs, E));
-			    	false -> 
-				    core:become(metaCtx(substNth(N, _Q++[M], Qs), Fs, Ss, Cs, Ls, E))
+			    	_ -> 
+				    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, Cs, Ls, E))
 			    end;
 			{'$context', _} = WithC ->
-			    NewLs = substNth(N, log:logBefore(L, proplists:get_value(id, Ext), M, C, F), Ls),
 			    case context:compare(C, WithC) of
 			    	newer ->
 			    	    E ! {apply, F, M, self(), WithC, N},
+				    NewLs = substNth(N, log:logBefore(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
 			    	    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, substNth(N, WithC, Cs), NewLs, E));
-			    	_ ->
+				older ->
+				    MesgToCancel = elementAfter(fun(E) -> context:compare(WithC, log:beforeContext(E)) == newer end, L),
+				    [BackedQs, BackedFs, BackedCs, BackedLs] = cancel_messages_after({N, MesgToCancel}, substNth(N, _Q, Qs), Fs, Cs, Ls),
+			    	    E ! {apply, F, M, self(), WithC, N},
+				    NewBackedLs = substNth(N, log:logBefore(nth(N, BackedLs), proplists:get_value(id, Ext), {M, Ext}, WithC, nth(N, BackedFs)), BackedLs),
+			    	    core:become(metaCtx(BackedQs, BackedFs, Ss, substNth(N, WithC, BackedCs), NewBackedLs, E));
+			    	same ->
 			    	    E ! {apply, F, M, self(), C, N},
+				    NewLs = substNth(N, log:logBefore(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
 			    	    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, Cs, NewLs, E))
 			    end;
 			undefined ->
-			    NewLs = substNth(N, log:logBefore(L, proplists:get_value(id, Ext), M, C, F), Ls),
+			    NewLs = substNth(N, log:logBefore(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
 			    E ! {apply, F, M, self(), C, N},
 			    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, Cs, NewLs, E))
 		    end;
@@ -165,6 +172,38 @@ metaCtx(Qs, Fs, Ss, Cs, Ls, E) ->
 	    end
     end.
 
+cancel_messages_after({N, E}, Qs, Fs, Cs, Ls) ->
+    [MesgsToCancel, MesgsToQueue] = collect_messages_to_cancel([{N, E}], ordsets:new(), ordsets:new(), Ls),
+    [LsToCancel, LsToQueue] = [make_partial_log_list(List, Ls) || List <- [MesgsToCancel, MesgsToQueue]],
+    [
+     [lists:map(fun(_E)-> log:message(_E) end, L) ++ Q      || {Q, L} <- lists:zip(Qs, LsToQueue)],
+     [case L of [H|T] -> log:beforeFunction(H); [] -> F end || {F, L} <- lists:zip(Fs, LsToCancel)],
+     [case L of [H|T] -> log:beforeContext(H);  [] -> C end || {C, L} <- lists:zip(Cs, LsToCancel)],
+     make_removed_log_list(MesgsToCancel, Ls)
+    ].
+
+collect_messages_to_cancel([], Checked, Derived, Ls) ->
+    [Checked, ordsets:subtract(Checked, Derived)];
+collect_messages_to_cancel([{N,E}|UnChecked], Checked, Derived, Ls) ->
+    MesgsAfterE = [{N, _E} || _E <- lists:takewhile(fun(_E) -> log:messageID(_E) /= log:messageID(E) end, nth(N, Ls))],
+    SentMesgsOfE = [{_N, log:lookup(_ID, nth(_N, Ls))} || {_N, _ID} <- log:sentMessageIDAndDestNumbers(E)],
+    collect_messages_to_cancel([{_N, _E} || {_N, _E} <- MesgsAfterE ++ SentMesgsOfE, not ordsets:is_element({N, log:messageID(_E)}, Checked)] ++ UnChecked, 
+			       ordsets:add_element({N, log:messageID(E)}, Checked), 
+			       add_elements([{_N, log:messageID(_E)} || {_N, _E} <- SentMesgsOfE], Derived),
+			       Ls).
+
+make_partial_log_list(MesgList, Ls) ->
+    lists:map(fun(N) -> 
+		      MesgsToCancelOfN = [tuple_reverse(log:lookupWithIndex(_ID, nth(_N, Ls))) || {_N, _ID} <- MesgList, _N == N],
+		      [_E || {_I, _E} <- lists:reverse(lists:sort(MesgsToCancelOfN))]
+	      end, lists:seq(1, length(Ls))).
+
+make_removed_log_list([], Ls) ->
+    Ls;
+make_removed_log_list([{N, ID}|MesgList], Ls) ->
+    make_removed_log_list(MesgList,
+			 substNth(N,[_E || _E <- nth(N, Ls), log:messageID(_E) /= ID],Ls)).
+
 %% ----------- Utils -----------
 
 nth(N, [H|T]) ->
@@ -185,4 +224,13 @@ replicate(N, V) ->
 	N when N > 0 -> [V|replicate(N-1, V)]
     end.
 
+elementAfter(Pred, Ls) ->
+    hd(lists:dropwhile(Pred, Ls)).
+
 gen_ID() -> base64:encode(crypto:strong_rand_bytes(4)).
+
+tuple_reverse({E1, E2}) ->
+    {E2, E1}.
+
+add_elements(Ls, Set) ->
+    lists:foldl(fun(E, Set)-> ordsets:add_element(E, Set) end, Set, Ls).
