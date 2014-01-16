@@ -1,5 +1,5 @@
 -module(runtime).
--export([new/1, send/2, newG/1, usr_self/0, neighbor/1, change_behavior/2]).
+-export([new/1, send/2, new_group/1, usr_self/0, neighbor/1, change_behavior/2]).
 
 %%%=========================================================================
 %%%  API
@@ -14,9 +14,9 @@ new(F) ->
 	    core:become(fun(X) -> X end)
     end.
 
-newG(Fs) ->
+new_group(Fs) ->
     N = length(Fs),
-    core:new(metaG(replicate(N, []), Fs, replicate(N, dormant), core:new(fun exec/1))).
+    core:new(meta_group(replicate(N, []), Fs, replicate(N, dormant), core:new(fun exec/1))).
 
 %% send V to {N1, ... {Nn, M}} is 
 send(Dest, Msg) ->
@@ -87,39 +87,39 @@ meta1(Q, F, S, E) ->
 	    end
     end.
 
-metaG(Qs, Fs, Ss, E) ->
+meta_group(Qs, Fs, Ss, E) ->
     fun (RawM) ->
 	    case RawM of
 		{mesg, {N, M}, _} ->
 		    case nth(N, Ss) of
 			dormant ->
 			    self() ! {'begin', N, []},
-			    core:become(metaG(substNth(N, nth(N,Qs)++[M], Qs), Fs, substNth(N, active, Ss), E));
+			    core:become(meta_group(subst_nth(N, nth(N,Qs)++[M], Qs), Fs, subst_nth(N, active, Ss), E));
 			active ->
-			    core:become(metaG(substNth(N, nth(N,Qs)++[M], Qs), Fs, substNth(N, active, Ss), E))
+			    core:become(meta_group(subst_nth(N, nth(N,Qs)++[M], Qs), Fs, subst_nth(N, active, Ss), E))
 		    end;
 		{'begin', N, _} ->
 		    case nth(N, Qs) of
 			[M|_Q] ->
 			    E ! {apply, nth(N, Fs), M, self(), N},
-			    core:become(metaG(substNth(N, _Q, Qs), Fs, Ss, E))
+			    core:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, E))
 		    end;
 		{'end', N, _} ->
 		    case nth(N, Qs) of
-			[] -> core:become(metaG(Qs, Fs, substNth(N, dormant, Ss), E));
+			[] -> core:become(meta_group(Qs, Fs, subst_nth(N, dormant, Ss), E));
 			[_|_] ->
 			    self() ! {'begin', N, []},
-			    core:become(metaG(Qs, Fs, Ss, E))
+			    core:become(meta_group(Qs, Fs, Ss, E))
 		    end;
 		{new, F, From, _} ->
 		    N = length(Qs) + 1,
 		    From ! {N, self()},
-		    core:become(metaG(Qs++[[]], Fs++[F], Ss++[dormant], E));
+		    core:become(meta_group(Qs++[[]], Fs++[F], Ss++[dormant], E));
 		{change_behavior, N, F} ->
-		    core:become(metaG(Qs, substNth(N, F, Fs), Ss, E));
+		    core:become(meta_group(Qs, subst_nth(N, F, Fs), Ss, E));
 		inspect -> % for debug
 		    erlang:display({Qs, Fs, Ss}),
-		    core:become(metaG(Qs, Fs, Ss, E))
+		    core:become(meta_group(Qs, Fs, Ss, E))
 	    end
     end.
 
@@ -131,10 +131,10 @@ nth(N, [H|T]) ->
 	N when N > 1 -> nth(N-1, T)
     end.
 
-substNth(N, V, Ls) ->
+subst_nth(N, V, Ls) ->
     case {Ls, N} of
 	{[_|T], 1} -> [V|T];
-	{[H|T], N} when N > 1 -> [H|substNth(N-1, V, T)]
+	{[H|T], N} when N > 1 -> [H|subst_nth(N-1, V, T)]
     end.
 
 replicate(N, V) ->

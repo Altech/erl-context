@@ -10,43 +10,43 @@
 new() ->
     [].
 
-logBefore(L, ID, M, C, F) ->
+log_before(L, ID, M, C, F) ->
     [{ID, M, {C, F}}|L].
 
-logAfter([{ID, M, Prev}|L], C, F, Ms) ->
+log_after([{ID, M, Prev}|L], C, F, Ms) ->
     [{ID, M, Prev, {C, F}, Ms}|L].
 
-messageID(E) ->
+message_ID(E) ->
     element(1, E).
 
 message(E) ->
     element(2, E).
 
-sentMessages(E) ->
+sent_messages(E) ->
     element(5, E).
 
-sentMessageIDAndDestNumbers(E) ->
+sent_message_ID_and_dest_numbers(E) ->
     [{N, ID} || {{N, _}, {ID, Msg}} <- element(5, E)].
 
-beforeContext(E) ->
+before_context(E) ->
     {C, F} = element(3, E),
     C.
 
-beforeFunction(E) ->
+before_function(E) ->
     {C, F} = element(3, E),
     F.
 
-afterContext(E) ->
+after_context(E) ->
     {C, F} = element(4, E),
     C.
 
-afterFunction(E) ->
+after_function(E) ->
     {C, F} = element(4, E),
     F.
 
 lookup(ID, L) ->
-    hd([E || E <- L, messageID(E) == ID]).
+    hd([E || E <- L, message_ID(E) == ID]).
 
-lookupWithIndex(ID, L) ->
-    I = length(lists:takewhile(fun(E)-> messageID(E) /= ID end, L)),
+lookup_with_index(ID, L) ->
+    I = length(lists:takewhile(fun(E)-> message_ID(E) /= ID end, L)),
     {lists:nth(I+1, L), I}.

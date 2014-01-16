@@ -1,5 +1,5 @@
 -module(runtime_ctx_opt).
--export([newG/1, send/2, new/1, sendContext/2, sendDelay/3, sendContextDelay/3]).
+-export([new_group/1, send/2, new/1, send_context/2, send_delay/3, send_context_delay/3]).
 
 %%%=========================================================================
 %%%  API
@@ -14,9 +14,9 @@ new(F) ->
 	    core:become(fun(X) -> X end)
     end.
 
-newG(Fs) ->
+new_group(Fs) ->
     N = length(Fs),
-    core:new(metaCtx(replicate(N, []), Fs, replicate(N, dormant), replicate(N, context:default()), replicate(N, log:new()), core:new(fun exec/1))).
+    core:new(meta_group(replicate(N, []), Fs, replicate(N, dormant), replicate(N, context:default()), replicate(N, log:new()), core:new(fun exec/1))).
 
 send(Dest, Msg) ->    
     case Dest of 
@@ -29,7 +29,7 @@ send(Dest, Msg) ->
 	_ -> Dest ! {mesg, Msg, []}
     end.
 
-sendContext(Dest, Context) ->    
+send_context(Dest, Context) ->    
     case Dest of 
 	{N, _Dest} -> case get(context) of
 			  undefined -> _Dest ! {mesg, {N, Context}, [{context, message}]};
@@ -41,7 +41,7 @@ sendContext(Dest, Context) ->
     end.
 
 % For Experiments
-sendDelay(Dest, Msg, Delay) ->    
+send_delay(Dest, Msg, Delay) ->    
     PContext = get(context),
     ID = gen_ID(),
     spawn(fun() -> 
@@ -58,7 +58,7 @@ sendDelay(Dest, Msg, Delay) ->
 	{{N, _Dest}, {'$context', _}} -> put(sent_messages, [{Dest, {ID, Msg}}| get(sent_messages)]); _ -> nil
     end.
 
-sendContextDelay(Dest, Context, Delay) ->    
+send_context_delay(Dest, Context, Delay) ->    
     PContext = get(context),
     ID = gen_ID(),
     spawn(fun() -> 
@@ -104,17 +104,17 @@ exec(Arg) ->
 	    core:become(fun exec/1)
     end.
 
-metaCtx(Qs, Fs, Ss, Cs, Ls, E) ->
+meta_group(Qs, Fs, Ss, Cs, Ls, E) ->
     fun (RawM) ->
-	    %% io:format("metaCtx: received ~p~n", [RawM]),
+	    %% io:format("meta_group: received ~p~n", [RawM]),
 	    case RawM of
 		{mesg, {N, M}, Ext} ->
 		    case nth(N, Ss) of
 			dormant ->
 			    self() ! {'begin', N, []},
-			    core:become(metaCtx(substNth(N, nth(N,Qs)++[{M, Ext}], Qs), Fs, substNth(N, active, Ss), Cs, Ls, E));
+			    core:become(meta_group(subst_nth(N, nth(N,Qs)++[{M, Ext}], Qs), Fs, subst_nth(N, active, Ss), Cs, Ls, E));
 			active ->
-			    core:become(metaCtx(substNth(N, nth(N,Qs)++[{M, Ext}], Qs), Fs, substNth(N, active, Ss), Cs, Ls, E))
+			    core:become(meta_group(subst_nth(N, nth(N,Qs)++[{M, Ext}], Qs), Fs, subst_nth(N, active, Ss), Cs, Ls, E))
 		    end;
 		{'begin', N, _} ->
 		    [[{M, Ext}|_Q], F, C, L] = [nth(N, Qs), nth(N, Fs), nth(N, Cs), nth(N, Ls)],
@@ -123,52 +123,52 @@ metaCtx(Qs, Fs, Ss, Cs, Ls, E) ->
 			    self() ! {'end', N, [{sent_messages, []}]},
 			    case context:compare(C, M) of
 			    	newer ->
-				    NewLs = substNth(N, log:logBefore(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
-				    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, substNth(N, M, Cs), NewLs, E));
+				    NewLs = subst_nth(N, log:log_before(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
+				    core:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, subst_nth(N, M, Cs), NewLs, E));
 			    	_ -> 
-				    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, Cs, Ls, E))
+				    core:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, Cs, Ls, E))
 			    end;
 			{'$context', _} = WithC ->
 			    case context:compare(C, WithC) of
 			    	newer ->
 			    	    E ! {apply, F, M, self(), WithC, N},
-				    NewLs = substNth(N, log:logBefore(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
-			    	    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, substNth(N, WithC, Cs), NewLs, E));
+				    NewLs = subst_nth(N, log:log_before(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
+			    	    core:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, subst_nth(N, WithC, Cs), NewLs, E));
 				older ->
-				    MesgToCancel = elementAfter(fun(E) -> context:compare(WithC, log:beforeContext(E)) == newer end, L),
-				    [BackedQs, BackedFs, BackedCs, BackedLs] = cancel_messages_after({N, MesgToCancel}, substNth(N, _Q, Qs), Fs, Cs, Ls),
+				    MesgToCancel = element_after(fun(E) -> context:compare(WithC, log:before_context(E)) == newer end, L),
+				    [BackedQs, BackedFs, BackedCs, BackedLs] = cancel_messages_after({N, MesgToCancel}, subst_nth(N, _Q, Qs), Fs, Cs, Ls),
 			    	    E ! {apply, F, M, self(), WithC, N},
-				    NewBackedLs = substNth(N, log:logBefore(nth(N, BackedLs), proplists:get_value(id, Ext), {M, Ext}, WithC, nth(N, BackedFs)), BackedLs),
-			    	    core:become(metaCtx(BackedQs, BackedFs, Ss, substNth(N, WithC, BackedCs), NewBackedLs, E));
+				    NewBackedLs = subst_nth(N, log:log_before(nth(N, BackedLs), proplists:get_value(id, Ext), {M, Ext}, WithC, nth(N, BackedFs)), BackedLs),
+			    	    core:become(meta_group(BackedQs, BackedFs, Ss, subst_nth(N, WithC, BackedCs), NewBackedLs, E));
 			    	same ->
 			    	    E ! {apply, F, M, self(), C, N},
-				    NewLs = substNth(N, log:logBefore(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
-			    	    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, Cs, NewLs, E))
+				    NewLs = subst_nth(N, log:log_before(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
+			    	    core:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, Cs, NewLs, E))
 			    end;
 			undefined ->
-			    NewLs = substNth(N, log:logBefore(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
+			    NewLs = subst_nth(N, log:log_before(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
 			    E ! {apply, F, M, self(), C, N},
-			    core:become(metaCtx(substNth(N, _Q, Qs), Fs, Ss, Cs, NewLs, E))
+			    core:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, Cs, NewLs, E))
 		    end;
 		% Original plus Messages list
 		{'end', N, Ext} ->
-		    NewLs = substNth(N, log:logAfter(nth(N,Ls), nth(N,Cs), nth(N,Fs), proplists:get_value(sent_messages, Ext)), Ls),
+		    NewLs = subst_nth(N, log:log_after(nth(N,Ls), nth(N,Cs), nth(N,Fs), proplists:get_value(sent_messages, Ext)), Ls),
 		    case nth(N, Qs) of
-			[] -> core:become(metaCtx(Qs, Fs, substNth(N, dormant, Ss), Cs, NewLs, E));
+			[] -> core:become(meta_group(Qs, Fs, subst_nth(N, dormant, Ss), Cs, NewLs, E));
 			[_|_] ->
 			    self() ! {'begin', N, []},
-			    core:become(metaCtx(Qs, Fs, Ss, Cs, NewLs, E))
+			    core:become(meta_group(Qs, Fs, Ss, Cs, NewLs, E))
 		    end;
 		{new, F, From, Ext} ->
 		    N = length(Qs) + 1,
 		    From ! {N, self()},
-		    core:become(metaCtx(Qs++[[]], Fs++[F], Ss++[dormant], Cs++[proplists:get_value(context, Ext)], Ls++[log:new()], E));
+		    core:become(meta_group(Qs++[[]], Fs++[F], Ss++[dormant], Cs++[proplists:get_value(context, Ext)], Ls++[log:new()], E));
 		inspect -> % for debug
 		    erlang:display({Qs, Fs, Ss, Cs, Ls}),
-		    core:become(metaCtx(Qs, Fs, Ss, Cs, Ls, E));
+		    core:become(meta_group(Qs, Fs, Ss, Cs, Ls, E));
 		{getState, From} -> % for debug
 		    From ! {Qs, Fs, Ss, Cs, Ls},
-		    core:become(metaCtx(Qs, Fs, Ss, Cs, Ls, E))
+		    core:become(meta_group(Qs, Fs, Ss, Cs, Ls, E))
 	    end
     end.
 
@@ -177,24 +177,24 @@ cancel_messages_after({N, E}, Qs, Fs, Cs, Ls) ->
     [LsToCancel, LsToQueue] = [make_partial_log_list(List, Ls) || List <- [MesgsToCancel, MesgsToQueue]],
     [
      [lists:map(fun(_E)-> log:message(_E) end, L) ++ Q      || {Q, L} <- lists:zip(Qs, LsToQueue)],
-     [case L of [H|T] -> log:beforeFunction(H); [] -> F end || {F, L} <- lists:zip(Fs, LsToCancel)],
-     [case L of [H|T] -> log:beforeContext(H);  [] -> C end || {C, L} <- lists:zip(Cs, LsToCancel)],
+     [case L of [H|T] -> log:before_function(H); [] -> F end || {F, L} <- lists:zip(Fs, LsToCancel)],
+     [case L of [H|T] -> log:before_context(H);  [] -> C end || {C, L} <- lists:zip(Cs, LsToCancel)],
      make_removed_log_list(MesgsToCancel, Ls)
     ].
 
 collect_messages_to_cancel([], Checked, Derived, Ls) ->
     [Checked, ordsets:subtract(Checked, Derived)];
 collect_messages_to_cancel([{N,E}|UnChecked], Checked, Derived, Ls) ->
-    MesgsAfterE = [{N, _E} || _E <- lists:takewhile(fun(_E) -> log:messageID(_E) /= log:messageID(E) end, nth(N, Ls))],
-    SentMesgsOfE = [{_N, log:lookup(_ID, nth(_N, Ls))} || {_N, _ID} <- log:sentMessageIDAndDestNumbers(E)],
-    collect_messages_to_cancel([{_N, _E} || {_N, _E} <- MesgsAfterE ++ SentMesgsOfE, not ordsets:is_element({N, log:messageID(_E)}, Checked)] ++ UnChecked, 
-			       ordsets:add_element({N, log:messageID(E)}, Checked), 
-			       add_elements([{_N, log:messageID(_E)} || {_N, _E} <- SentMesgsOfE], Derived),
+    MesgsAfterE = [{N, _E} || _E <- lists:takewhile(fun(_E) -> log:message_ID(_E) /= log:message_ID(E) end, nth(N, Ls))],
+    SentMesgsOfE = [{_N, log:lookup(_ID, nth(_N, Ls))} || {_N, _ID} <- log:sent_message_ID_and_dest_numbers(E)],
+    collect_messages_to_cancel([{_N, _E} || {_N, _E} <- MesgsAfterE ++ SentMesgsOfE, not ordsets:is_element({N, log:message_ID(_E)}, Checked)] ++ UnChecked, 
+			       ordsets:add_element({N, log:message_ID(E)}, Checked), 
+			       add_elements([{_N, log:message_ID(_E)} || {_N, _E} <- SentMesgsOfE], Derived),
 			       Ls).
 
 make_partial_log_list(MesgList, Ls) ->
     lists:map(fun(N) -> 
-		      MesgsToCancelOfN = [tuple_reverse(log:lookupWithIndex(_ID, nth(_N, Ls))) || {_N, _ID} <- MesgList, _N == N],
+		      MesgsToCancelOfN = [tuple_reverse(log:lookup_with_index(_ID, nth(_N, Ls))) || {_N, _ID} <- MesgList, _N == N],
 		      [_E || {_I, _E} <- lists:reverse(lists:sort(MesgsToCancelOfN))]
 	      end, lists:seq(1, length(Ls))).
 
@@ -202,7 +202,7 @@ make_removed_log_list([], Ls) ->
     Ls;
 make_removed_log_list([{N, ID}|MesgList], Ls) ->
     make_removed_log_list(MesgList,
-			 substNth(N,[_E || _E <- nth(N, Ls), log:messageID(_E) /= ID],Ls)).
+			 subst_nth(N,[_E || _E <- nth(N, Ls), log:message_ID(_E) /= ID],Ls)).
 
 %% ----------- Utils -----------
 
@@ -212,10 +212,10 @@ nth(N, [H|T]) ->
 	N when N > 1 -> nth(N-1, T)
     end.
 
-substNth(N, V, Ls) ->
+subst_nth(N, V, Ls) ->
     case {Ls, N} of
 	{[_|T], 1} -> [V|T];
-	{[H|T], N} when N > 1 -> [H|substNth(N-1, V, T)]
+	{[H|T], N} when N > 1 -> [H|subst_nth(N-1, V, T)]
     end.
 
 replicate(N, V) ->
@@ -224,7 +224,7 @@ replicate(N, V) ->
 	N when N > 0 -> [V|replicate(N-1, V)]
     end.
 
-elementAfter(Pred, Ls) ->
+element_after(Pred, Ls) ->
     hd(lists:dropwhile(Pred, Ls)).
 
 gen_ID() -> base64:encode(crypto:strong_rand_bytes(4)).

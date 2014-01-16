@@ -1,11 +1,11 @@
 -module(runtime_ctx).
--export([newG/1, send/2, send/3, new/3, sendDelay/3, sendDelay/4, getState/1]).
+-export([new_group/1, send/2, send/3, new/3, sendDelay/3, sendDelay/4, getState/1]).
 
 %%%=========================================================================
 %%%  API
 %%%=========================================================================
 
-newG(Fs) ->
+new_group(Fs) ->
     N = length(Fs),
     core:new(metaCtx(replicate(N, []), Fs, replicate(N, dormant), replicate(N, context:default()), core:new(fun exec/1))).
 

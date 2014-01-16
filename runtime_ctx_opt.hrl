@@ -5,9 +5,9 @@
 % overrided functions
 -define(send(Dest, Msg), runtime_ctx_opt:send(Dest, Msg)).
 -define(new(F), runtime_ctx_opt:new(F)).
--define(newG(Fs), runtime_ctx_opt:newG(Fs)).
+-define(new_group(Fs), runtime_ctx_opt:new_group(Fs)).
 
 % for experiments
--define(sendDelay(Dest, Msg, Delay), runtime_ctx_opt:sendDelay(Dest, Msg, Delay)).
--define(sendContext(Dest, Context), runtime_ctx_opt:sendContext(Dest, Context)).
--define(sendContextDelay(Dest, Context, Delay), runtime_ctx_opt:sendContextDelay(Dest, Context, Delay)).
+-define(send_delay(Dest, Msg, Delay), runtime_ctx_opt:send_delay(Dest, Msg, Delay)).
+-define(send_context(Dest, Context), runtime_ctx_opt:send_context(Dest, Context)).
+-define(send_context_delay(Dest, Context, Delay), runtime_ctx_opt:send_context_delay(Dest, Context, Delay)).

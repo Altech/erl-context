@@ -4,7 +4,7 @@
 start(S) ->
     put(stateOfGroupActor, S).
 
-showLog(L) ->
+show_log(L) ->
     lists:map(fun({ID, M, Before, After, Ms}) ->
 		      io:format(" ID: ~p~n", [ID]),
 		      io:format(" Message: ~p~n",[M]),
@@ -17,13 +17,13 @@ showLog(L) ->
 
 show(N) ->
     io:format("- [~pth of logs] ----------------------------------------~n",[N]),
-    showLog(nth(N, log())).
+    show_log(nth(N, log())).
 
-showAll() ->
+show_all() ->
     Logs = log(),
     lists:map(fun({L, N}) -> 
 		      io:format("- [~pth of logs] ----------------------------------------~n",[N]),
-		      showLog(L)
+		      show_log(L)
 	      end, lists:zip(Logs, lists:seq(1, length(Logs)))),
     nil.
 

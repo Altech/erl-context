@@ -6,7 +6,7 @@
 
 %% Simple application for cross-context messages type (a)
 start() ->
-    G = ?newG([fun complex_cross:a1/1, fun complex_cross:a2/1, fun complex_cross:a3/1, fun complex_cross:aO/1]),
+    G = ?new_group([fun complex_cross:a1/1, fun complex_cross:a2/1, fun complex_cross:a3/1, fun complex_cross:aO/1]),
     O = {4, G},
     ?send(O, start),
     G.
@@ -22,11 +22,11 @@ aO(start) ->
     ?send(?neighbor(1), first_from_observer),
     put(context, context2()),
     ?send(?neighbor(3), first_from_observer),
-    ?sendDelay(?neighbor(1), start_from_observer, 500),
-    ?sendDelay(?neighbor(3), start_from_observer, 500),
+    ?send_delay(?neighbor(1), start_from_observer, 500),
+    ?send_delay(?neighbor(3), start_from_observer, 500),
     % send cross-context message!
     put(context, context1()),
-    ?sendDelay(?neighbor(1), yheeaaaa, 2200).
+    ?send_delay(?neighbor(1), yheeaaaa, 2200).
 
 a1(Msg) ->
     case Msg of
@@ -47,10 +47,10 @@ a2(Msg) ->
     case Msg of
 	yhaa ->
 	    p("get yhaa from A1~n"),
-	    ?sendDelay(?neighbor(1), yhaaa, 500);
+	    ?send_delay(?neighbor(1), yhaaa, 500);
 	inst1 ->
 	    p("get instruction of 1 and replying~n"),
-	    ?sendDelay(?neighbor(3), inst1_reply, 600);
+	    ?send_delay(?neighbor(3), inst1_reply, 600);
 	inst2 ->
 	    p("get instruction of 2~n");
 	_ ->
@@ -63,8 +63,8 @@ a3(Msg) ->
 	    p("get first message from observer~n");
 	start_from_observer ->
 	    p("start send two instrunction to A2~n"),
-	    ?sendDelay(?neighbor(2), inst1, 520),
-	    ?sendDelay(?neighbor(2), inst2, 1020);
+	    ?send_delay(?neighbor(2), inst1, 520),
+	    ?send_delay(?neighbor(2), inst2, 1020);
 	inst1_reply ->
 	    p("get reply of instruction of 1~n")
     end.

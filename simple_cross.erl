@@ -6,7 +6,7 @@
 
 %% Simple application for cross-context messages type (a)
 start([Type]) ->
-    G = ?newG([fun simple_cross:apO/1, fun simple_cross:apA/1, fun simple_cross:apB/1]),
+    G = ?new_group([fun simple_cross:apO/1, fun simple_cross:apA/1, fun simple_cross:apB/1]),
     [O, A, B] = [{1, G}, {2, G}, {3, G}],
     ?send(O, {start, {A, B}, Type}),
     if Type == b -> timer:sleep(500); true -> nil end,
@@ -17,11 +17,11 @@ apO(Msg) ->
     case Msg of
 	{start, {A, B}, Type} ->
 	    if Type == a ->
-		    ?sendContextDelay(A, context:new(new_context_observed_by_O), 2000),
-		    ?sendContext(     B, context:new(new_context_observed_by_O));
+		    ?send_context_delay(A, context:new(new_context_observed_by_O), 2000),
+		    ?send_context(     B, context:new(new_context_observed_by_O));
 	       Type == b ->
-		    ?sendContext(     A, context:new(new_context_observed_by_O)),
-		    ?sendContextDelay(B, context:new(new_context_observed_by_O), 2000)
+		    ?send_context(     A, context:new(new_context_observed_by_O)),
+		    ?send_context_delay(B, context:new(new_context_observed_by_O), 2000)
 	    end;
 	_ ->
 	    io:format("apO received unexpected ~p~n", [Msg])
@@ -32,9 +32,9 @@ apA(Msg) ->
 	{start, B, Type} ->
 	    io:format("A: send hello to B with context of ~p~n",[context:value(get(context))]),
 	    if Type == a ->
-		    ?sendDelay(B, hello, 2000);
+		    ?send_delay(B, hello, 2000);
 	       Type == b ->
-		    ?sendDelay(B, hello, 1000)
+		    ?send_delay(B, hello, 1000)
 	    end
     end.
 

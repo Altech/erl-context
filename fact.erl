@@ -13,8 +13,8 @@ factG({N, Cont}) ->
     end.
 
 start() ->
-    PrinterG = ?newG([fun fact:printerG/1]),
-    FactG = ?newG([fun fact:factG/1]),
+    PrinterG = ?new_group([fun fact:printerG/1]),
+    FactG = ?new_group([fun fact:factG/1]),
     [Printer, Fact] = [{1, PrinterG}, {1, FactG}],
     ?send(Fact, {10, Printer}),
     FactG.
