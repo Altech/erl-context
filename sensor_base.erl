@@ -1,7 +1,7 @@
--module(sensor_core).
+-module(sensor_base).
 -export([main/1, setup/0]).
 -include("sensor.hrl").
--include("core.hrl").
+-include("runtime_base.hrl").
 -import(name_server, [self_name/0, node_name/1]).
 
 %%%=========================================================================

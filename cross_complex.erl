@@ -1,12 +1,12 @@
--module(complex_cross).
+-module(cross_complex).
 -compile(export_all).
 
--include("runtime.hrl").
-%% -include("runtime_ctx.hrl").
+-include("runtime_gwr.hrl").
+%% -include("runtime_gwrc.hrl").
 
 %% Simple application for cross-context messages type (a)
 start() ->
-    G = ?new_group([fun complex_cross:a1/1, fun complex_cross:a2/1, fun complex_cross:a3/1, fun complex_cross:aO/1]),
+    G = ?new_group([fun cross_complex:a1/1, fun cross_complex:a2/1, fun cross_complex:a3/1, fun cross_complex:aO/1]),
     O = {4, G},
     ?send(O, start),
     G.

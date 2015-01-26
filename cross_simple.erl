@@ -1,12 +1,12 @@
--module(simple_cross).
+-module(cross_simple).
 -compile(export_all).
 
-%% -include("runtime.hrl").
--include("runtime_ctx.hrl").
+%% -include("runtime_gwr.hrl").
+-include("runtime_gwrc.hrl").
 
 %% Simple application for cross-context messages type (a)
 start([Type]) ->
-    G = ?new_group([fun simple_cross:apO/1, fun simple_cross:apA/1, fun simple_cross:apB/1]),
+    G = ?new_group([fun cross_simple:apO/1, fun cross_simple:apA/1, fun cross_simple:apB/1]),
     [O, A, B] = [{1, G}, {2, G}, {3, G}],
     ?send(O, {start, {A, B}, Type}),
     if Type == b -> timer:sleep(500); true -> nil end,

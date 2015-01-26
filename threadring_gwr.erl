@@ -1,7 +1,7 @@
--module(threadring_runtime_ctx).
+-module(threadring_gwr).
 -export([main/1, roundtrip_gen/1]).
 
--include("runtime_ctx.hrl").
+-include("runtime_gwr.hrl").
 
 start(Token) ->
    Fs = lists:foldl(

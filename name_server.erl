@@ -1,5 +1,5 @@
 -module(name_server).
--include("core.hrl").
+-include("runtime_base.hrl").
 -export([setup/1, self_name/0, node_name/1]).
 -export([name_behavior_init/1]).
 

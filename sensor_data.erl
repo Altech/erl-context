@@ -1,4 +1,4 @@
--module(data).
+-module(sensor_data).
 -export([get_network_data/0, get_children/2, get_parent/2, get_index_from_node/1]).
 
 get_network_data() ->

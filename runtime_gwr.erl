@@ -1,4 +1,4 @@
--module(runtime).
+-module(runtime_gwr).
 -export([new/1, send/2, become/1, new_group/1, usr_self/0, neighbor/1, send_delay/3]).
 -import(general,[nth/2, subst_nth/3, replicate/2]).
 
@@ -9,26 +9,26 @@
 new(F) ->
     case get(self) of
 	undefined -> 
-	    core:new(meta1([], F, dormant, core:new(fun exec/1)));
+	    runtime_base:new(meta1([], F, dormant, runtime_base:new(fun exec/1)));
 	{_, MetaG} ->
 	    MetaG ! {new, F, self(), []},
-	    core:become(fun(X) -> X end) % 返り値を使用（注：モデルからの逸脱）
+	    runtime_base:become(fun(X) -> X end) % 返り値を使用（注：モデルからの逸脱）
     end.
 
 new_group(Fs) ->
     N = length(Fs),
-    core:new(meta_group(replicate(N, []), Fs, replicate(N, dormant), core:new(fun exec/1))).
+    runtime_base:new(meta_group(replicate(N, []), Fs, replicate(N, dormant), runtime_base:new(fun exec/1))).
 
 become(F) ->
     case get(self) of
         undefined -> 
-            core:become(F);
+            runtime_base:become(F);
         {N, MetaG} ->
             % Erlang及びアクターモデルではメッセージの送受信順序は保証されているので、
             % たぶんこれで大丈夫。
             MetaG ! {become, N, F, []};
         _ ->
-            core:become(F)
+            runtime_base:become(F)
     end.
 
 %% send V to {N1, ... {Nn, M}} is 
@@ -71,13 +71,13 @@ exec(Arg) ->
 	    put(self, From),
 	    apply(F, [M]),
 	    From ! {'end', []},
-	    core:become(fun exec/1);
+	    runtime_base:become(fun exec/1);
 	% From Group-Wide Meta-Level
 	{apply, F, M, From, N} ->
 	    put(self, {N, From}),
 	    apply(F, [M]),
 	    From ! {'end', N, []},
-	    core:become(fun exec/1)    
+	    runtime_base:become(fun exec/1)    
     end.
 
 meta1(Q, F, S, E) ->
@@ -87,22 +87,22 @@ meta1(Q, F, S, E) ->
 		case S of
 		    dormant ->
 			self() ! {'begin', []},
-			core:become(meta1(Q++[M], F, active, E));
+			runtime_base:become(meta1(Q++[M], F, active, E));
 		    active ->
-			core:become(meta1(Q++[M], F, active, E))
+			runtime_base:become(meta1(Q++[M], F, active, E))
 		end;
 	    {'begin', []} ->
 		case Q of
 		    [M|_Q] ->
 			E ! {apply, F, M, self()},
-			core:become(meta1(_Q, F, S, E))
+			runtime_base:become(meta1(_Q, F, S, E))
 		    end;
 	    {'end', []} ->
 		case Q of
-		    [] -> core:become(meta1(Q, F, dormant, E));
+		    [] -> runtime_base:become(meta1(Q, F, dormant, E));
 		    [_|_] ->
 			self() ! {'begin', []},
-			core:become(meta1(Q, F, S, E))
+			runtime_base:become(meta1(Q, F, S, E))
 		end
 	end
     end.
@@ -114,9 +114,9 @@ meta_group(Qs, Fs, Ss, E) ->
 	  case nth(N, Ss) of
 	    dormant ->
 	      self() ! {'begin', N, []},
-	      core:become(meta_group(subst_nth(N, nth(N,Qs)++[M], Qs), Fs, subst_nth(N, active, Ss), E));
+	      runtime_base:become(meta_group(subst_nth(N, nth(N,Qs)++[M], Qs), Fs, subst_nth(N, active, Ss), E));
 	    active ->
-	      core:become(meta_group(subst_nth(N, nth(N,Qs)++[M], Qs), Fs, subst_nth(N, active, Ss), E))
+	      runtime_base:become(meta_group(subst_nth(N, nth(N,Qs)++[M], Qs), Fs, subst_nth(N, active, Ss), E))
 	  end;
 	{'begin', N, _} ->
 	  case nth(N, Qs) of
@@ -125,23 +125,23 @@ meta_group(Qs, Fs, Ss, E) ->
                      true -> nil
                   end,
 	      E ! {apply, nth(N, Fs), M, self(), N},
-	      core:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, E))
+	      runtime_base:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, E))
 	  end;
 	{'end', N, _} ->
 	  case nth(N, Qs) of
-	    [] -> core:become(meta_group(Qs, Fs, subst_nth(N, dormant, Ss), E));
+	    [] -> runtime_base:become(meta_group(Qs, Fs, subst_nth(N, dormant, Ss), E));
 	    [_|_] ->
 	      self() ! {'begin', N, []},
-	      core:become(meta_group(Qs, Fs, Ss, E))
+	      runtime_base:become(meta_group(Qs, Fs, Ss, E))
 	  end;
 	{new, F, From, _} ->
 	  N = length(Qs) + 1,
 	  From ! {N, self()}, % これダメじゃね
-	  core:become(meta_group(Qs++[[]], Fs++[F], Ss++[dormant], E));
+	  runtime_base:become(meta_group(Qs++[[]], Fs++[F], Ss++[dormant], E));
         {become, N, F, _} ->
-          core:become(meta_group(Qs, subst_nth(N, F, Fs), Ss, E));
+          runtime_base:become(meta_group(Qs, subst_nth(N, F, Fs), Ss, E));
 	inspect -> % for debug
 	  erlang:display({Qs, Fs, Ss}),
-	  core:become(meta_group(Qs, Fs, Ss, E))
+	  runtime_base:become(meta_group(Qs, Fs, Ss, E))
       end
   end.

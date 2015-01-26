@@ -1,7 +1,7 @@
--module(sensor_runtime).
+-module(sensor_gwrc).
 -export([main/1, setup/0]).
 -include("sensor.hrl").
--include("runtime.hrl").
+-include("runtime_gwrc.hrl").
 
 %%%=========================================================================
 %%%  Setup
@@ -107,7 +107,7 @@ self_name() ->
 
 node_name(Addr) ->
     case Addr of
-        {N,M} -> list_to_atom(lists:concat([node,N-1]));
+        {N,_} -> list_to_atom(lists:concat([node,N-1]));
         _ -> Addr
     end.
 

@@ -1,7 +1,7 @@
--module(threadring_runtime).
+-module(threadring_gwrc).
 -export([main/1, roundtrip_gen/1]).
 
--include("runtime.hrl").
+-include("runtime_gwrc.hrl").
 
 start(Token) ->
    Fs = lists:foldl(
