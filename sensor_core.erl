@@ -1,6 +1,15 @@
 -module(sensor_core).
 -export([main/1, setup/0]).
 -include("core.hrl").
+-import(general, [l/1, l/2, my_time/0]).
+-import(data, [get_network_data/0, get_children/2, get_parent/2, get_index_from_node/1]).
+-import(name_server, [setup/1, self_name/0, node_name/1]).
+
+-define(MAJOR_TIMES(I), ((I rem 3) + 1)*1000000).
+
+%%%=========================================================================
+%%%  Setup
+%%%=========================================================================
 
 main([_]) ->
     timer:sleep(200),
@@ -20,23 +29,6 @@ broadcast(Addrs, Msg) ->
                           ?send(Addr,Msg)
                   end, Addrs).
 
-% Return registered process names
-get_network_data() ->
-    NumNodes = lists:seq(0,6),
-    NumEdges = [[5,4],[6,4],[4,2],[3,2],[2,1],[1,0],[0,-1]],
-    [
-     lists:map(fun (NumNode) -> 
-                       list_to_atom(lists:concat([node, NumNode])) 
-               end, NumNodes),
-     lists:map(fun (NumEdge) ->
-                       [From, To] = NumEdge,
-                       [
-                        list_to_atom(lists:concat([node, From])), 
-                        list_to_atom(lists:concat([node, To]))
-                       ]
-               end, NumEdges)
-    ].
-
 setup() ->
     % 各ノードに相当するアクターを立ちあげ
     [Nodes, Edges] = get_network_data(),
@@ -48,101 +40,60 @@ setup() ->
                                    {Node, Addr}
                           end, Nodes),
     % ネームサーバー（デバッグ用）
-    register(name_server, ?new(name_behavior_init(NameToAddr))),
+    name_server:setup(NameToAddr),
     % 各アクターの持つネットワーク参照を名前からアドレスに変更
     Addrs = maps:values(maps:from_list(NameToAddr)),
     lists:foreach(fun (Addr) ->
-                          ?send(Addr, {setup, self(), maps:from_list([{'node-1', self()}|NameToAddr])}),
+                          Map = maps:from_list([{'node-1', self()}|NameToAddr]),
+                          ?send(Addr, {setup, self(), Map}),
                           receive 
                               finish_setup -> ok;
                               X -> error(X)
                           end
                   end, Addrs),
-    % 実験用乱数生成
-    {A, B, C} = now(),
-    random:seed(A,B,C),
     Addrs.
 
-self_name() ->
-    node_name(?self()).
+%%%=========================================================================
+%%%  Behaviors
+%%%=========================================================================
 
-node_name(Addr) ->
-    ?send(name_server, {Addr, ?self()}),
-    receive
-        {name_server_reply, Name} -> Name
-    end.
-
-% Private Functions %
 node_behavior(I, Children, Parent, ActorsAndVaues) ->
     fun (Msg) ->
             case Msg of 
                 {setup, From, NameToAddr} ->
                     [ParentAddr|ChildrenAddr] = 
-                        lists:map(fun (Child) -> maps:get(Child, NameToAddr) end, [Parent|Children]),
+                        lists:map(fun (Child) -> 
+                                          maps:get(Child, NameToAddr) 
+                                  end, [Parent|Children]),
                     {A, B, C} = now(), random:seed(A,B,C),
                     ?send(From, finish_setup),
                     ?become(node_behavior(I, ChildrenAddr, ParentAddr, ActorsAndVaues));
                 get_sensor_data ->
                     l("~p received ~p", [self_name(), get_sensor_data]),
                     l("~p major ~p times", [self_name(), (((I rem 3) + 1)*1000000)]),
-                    Value = major(((I rem 3) + 1)*1000000, I),
+                    Value = major(?MAJOR_TIMES(I), I),
                     l("~p majored", [self_name()]),
                     NewActorsAndVaues = [{?self(), Value}|ActorsAndVaues],
-                    case is_completed([?self()|Children], NewActorsAndVaues) of
-                        true ->
-                            ?send(Parent, {sensor, ?self(), summarize(NewActorsAndVaues)}),
-                            ?become(node_behavior(I, Children, Parent, []));
-                        false ->
-                            ?become(node_behavior(I, Children, Parent, NewActorsAndVaues))
-                    end;
-                {sensor, From, Value} -> 
-                    % [TODO] Check whether sender is a children or not
+                    node_behavior_rest(I, Children, Parent, NewActorsAndVaues);
+                {sensor, From, Value} ->
                     NewActorsAndVaues = [{From, Value}|ActorsAndVaues],
                     l("~p received ~p", [self_name(), {sensor, node_name(From), Value}]),
-                    case is_completed([?self()|Children], NewActorsAndVaues) of
-                        true ->
-                            ?send(Parent, {sensor, ?self(), summarize(NewActorsAndVaues)}),
-                            ?become(node_behavior(I, Children, Parent, []));
-                        false ->
-                            ?become(node_behavior(I, Children, Parent, NewActorsAndVaues))
-                    end
+                    node_behavior_rest(I, Children, Parent, NewActorsAndVaues)
             end
     end.
 
-name_behavior_init(NameToAddr) ->
-    AddrToName = maps:from_list(lists:map(fun ({Name,Addr}) -> 
-                                                 {Addr, Name} 
-                                         end, NameToAddr)),
-    name_behavior(AddrToName).
-
-name_behavior(AddrToName) ->
-    fun ({Addr, From}) ->
-            ?send(From, {name_server_reply, maps:get(Addr, AddrToName)}),
-            ?become(name_behavior(AddrToName))
+node_behavior_rest(I, Children, Parent, NewActorsAndVaues) ->
+    case is_completed([?self()|Children], NewActorsAndVaues) of
+        true ->
+            ?send(Parent, {sensor, ?self(), summarize(NewActorsAndVaues)}),
+            ?become(node_behavior(I, Children, Parent, []));
+        false ->
+            ?become(node_behavior(I, Children, Parent, NewActorsAndVaues))
     end.
 
-% Sub-Functions %
-get_children(Node, Edges) ->
-    lists:filtermap(fun([From, To]) -> 
-                            if 
-                                To == Node -> {true, From}; 
-                                true -> false 
-                            end
-                    end, Edges).
-
-get_parent(Node, Edges) ->
-    [H|_] = lists:filtermap(fun([From, To]) -> 
-                                    if 
-                                        From == Node -> {true, To};
-                                        true -> false
-                                    end
-                            end, Edges),
-    H.
-
-get_index_from_node(Node) ->
-    [S|_] = io_lib:format("~p",[Node]),
-    {I,_} = string:to_integer(string:substr(S,5)),
-    I.
+%%%=========================================================================
+%%%  Sub-Routines
+%%%=========================================================================
 
 is_completed(Actors, ActorsAndVaues) ->
     ReceivedActors = maps:keys(maps:from_list(ActorsAndVaues)),
@@ -150,7 +101,10 @@ is_completed(Actors, ActorsAndVaues) ->
                       lists:member(Actor , ReceivedActors)
               end, Actors).
 
-% Computation 
+%%%=========================================================================
+%%%  Computation
+%%%=========================================================================
+
 summarize(ActorsAndVaues) ->
     Sum = lists:foldr(fun (Value, Sum) ->
                               Sum + Value
@@ -167,14 +121,3 @@ major(N,I) ->
                       end,
                       0 , lists:seq(1,N)),
     Sum / N.
-
-% General Functions %
-l(Format) ->
-    l(Format, []).
-l(Format, Args) ->
-    io:fwrite(lists:concat(["[~s] " , Format, "~n"]), [my_time()|Args]).
-
-my_time() ->
-    {H, M, S} = time(),
-    [$0 + H div 10, $0 + H rem 10, $:, $0 + M div 10, $0 + M rem 10, $:, $0 + S div 10, $0 + S rem 10].
-
