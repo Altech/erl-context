@@ -3,7 +3,7 @@
 
 %% -include("core.hrl").
 %% -include("runtime.hrl").
--include("runtime_ctx_opt.hrl").
+-include("runtime_ctx.hrl").
 
 printer(X) -> io:format("~p~n",[X]).
 

@@ -1,5 +1,6 @@
 -define(change_behavior(F, Self), runtime:change_behavior(F, Self)).
 -define(self(), runtime:usr_self()).
+-define(neighbor(N), runtime:neighbor(N)).
 
 % overrided functions
 -define(send(Dest, Msg), runtime_ctx:send(Dest, Msg)).
