@@ -1,0 +1,4 @@
+-define(send(Dest, Msg), core:send(Dest, Msg)).
+-define(new(F), core:new(F)).
+-define(self(), erlang:self()).
+-define(become(F), core:become(F)).
