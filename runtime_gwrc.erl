@@ -17,7 +17,8 @@ new(F) ->
 
 new_group(Fs) ->
     N = length(Fs),
-    runtime_base:new(meta_group(replicate(N, []), Fs, replicate(N, dormant), replicate(N, context:default()), replicate(N, log:new()), runtime_base:new(fun exec/1))).
+    Es = lists:map(fun(_)-> runtime_base:new(fun exec/1) end, lists:seq(1,N)),
+    runtime_base:new(meta_group(replicate(N, []), Fs, replicate(N, dormant), replicate(N, context:default()), replicate(N, log:new()), Es)).
 
 send(Dest, Msg) ->    
     case Dest of 
@@ -105,7 +106,7 @@ exec(Arg) ->
             runtime_base:become(fun exec/1)
     end.
 
-meta_group(Qs, Fs, Ss, Cs, Ls, E) ->
+meta_group(Qs, Fs, Ss, Cs, Ls, Es) ->
     fun (RawM) ->
             %% io:format("meta_group: received ~p~n", [RawM]),
             case RawM of
@@ -113,64 +114,65 @@ meta_group(Qs, Fs, Ss, Cs, Ls, E) ->
                     case nth(N, Ss) of
                         dormant ->
                             self() ! {'begin', N, []},
-                            runtime_base:become(meta_group(subst_nth(N, nth(N,Qs)++[{M, Ext}], Qs), Fs, subst_nth(N, active, Ss), Cs, Ls, E));
+                            runtime_base:become(meta_group(subst_nth(N, nth(N,Qs)++[{M, Ext}], Qs), Fs, subst_nth(N, active, Ss), Cs, Ls, Es));
                         active ->
-                            runtime_base:become(meta_group(subst_nth(N, nth(N,Qs)++[{M, Ext}], Qs), Fs, subst_nth(N, active, Ss), Cs, Ls, E))
+                            runtime_base:become(meta_group(subst_nth(N, nth(N,Qs)++[{M, Ext}], Qs), Fs, subst_nth(N, active, Ss), Cs, Ls, Es))
                     end;
                 {'begin', N, _} ->
-                    [[{M, Ext}|_Q], F, C, L] = [nth(N, Qs), nth(N, Fs), nth(N, Cs), nth(N, Ls)],
+                    [[{M, Ext}|_Q], F, C, L, E] = [nth(N, Qs), nth(N, Fs), nth(N, Cs), nth(N, Ls), nth(N, Es)],
                     case proplists:get_value(context, Ext) of 
                         message ->
                             self() ! {'end', N, [{sent_messages, []}]},
                             case context:compare(C, M) of
                                 newer ->
                                     NewLs = subst_nth(N, log:log_before(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
-                                    runtime_base:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, subst_nth(N, M, Cs), NewLs, E));
+                                    runtime_base:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, subst_nth(N, M, Cs), NewLs, Es));
                                 _ -> 
-                                    runtime_base:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, Cs, Ls, E))
+                                    runtime_base:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, Cs, Ls, Es))
                             end;
                         {'$context', _} = WithC ->
                             case context:compare(C, WithC) of
                                 newer ->
                                     E ! {apply, F, M, self(), WithC, N},
                                     NewLs = subst_nth(N, log:log_before(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
-                                    runtime_base:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, subst_nth(N, WithC, Cs), NewLs, E));
+                                    runtime_base:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, subst_nth(N, WithC, Cs), NewLs, Es));
                                 older ->
-                                    MesgToCancel = element_after(fun(E) -> context:compare(WithC, log:before_context(E)) == newer end, L),
+                                    MesgToCancel = element_after(fun(Elm) -> context:compare(WithC, log:before_context(Elm)) == newer end, L),
                                     [BackedQs, BackedFs, BackedCs, BackedLs] = cancel_messages_after({N, MesgToCancel}, subst_nth(N, _Q, Qs), Fs, Cs, Ls),
                                     E ! {apply, F, M, self(), WithC, N},
                                     NewBackedLs = subst_nth(N, log:log_before(nth(N, BackedLs), proplists:get_value(id, Ext), {M, Ext}, WithC, nth(N, BackedFs)), BackedLs),
-                                    runtime_base:become(meta_group(BackedQs, BackedFs, Ss, subst_nth(N, WithC, BackedCs), NewBackedLs, E));
+                                    runtime_base:become(meta_group(BackedQs, BackedFs, Ss, subst_nth(N, WithC, BackedCs), NewBackedLs, Es));
                                 same ->
                                     E ! {apply, F, M, self(), C, N},
                                     NewLs = subst_nth(N, log:log_before(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
-                                    runtime_base:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, Cs, NewLs, E))
+                                    runtime_base:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, Cs, NewLs, Es))
                             end;
                         undefined ->
                             NewLs = subst_nth(N, log:log_before(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
                             E ! {apply, F, M, self(), C, N},
-                            runtime_base:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, Cs, NewLs, E))
+                            runtime_base:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, Cs, NewLs, Es))
                     end;
                 {'end', N, Ext} ->
                     NewLs = subst_nth(N, log:log_after(nth(N,Ls), nth(N,Cs), nth(N,Fs), proplists:get_value(sent_messages, Ext)), Ls),
                     case nth(N, Qs) of
-                        [] -> runtime_base:become(meta_group(Qs, Fs, subst_nth(N, dormant, Ss), Cs, NewLs, E));
+                        [] -> runtime_base:become(meta_group(Qs, Fs, subst_nth(N, dormant, Ss), Cs, NewLs, Es));
                         [_|_] ->
                             self() ! {'begin', N, []},
-                            runtime_base:become(meta_group(Qs, Fs, Ss, Cs, NewLs, E))
+                            runtime_base:become(meta_group(Qs, Fs, Ss, Cs, NewLs, Es))
                     end;
                 {new, F, From, Ext} ->
                     N = length(Qs) + 1,
                     From ! {N, self()}, % これダメじゃね
-                    runtime_base:become(meta_group(Qs++[[]], Fs++[F], Ss++[dormant], Cs++[proplists:get_value(context, Ext)], Ls++[log:new()], E));
-                {become, N, F, _} ->
-                    runtime_base:become(meta_group(Qs, subst_nth(N, F, Fs), Ss, Cs, Ls, E));
+                    runtime_base:become(meta_group(Qs++[[]], Fs++[F], Ss++[dormant], Cs++[proplists:get_value(context, Ext)], Ls++[log:new()], Es));
+                {become, N, F, From, _} ->
+                    From ! end_become,
+                    runtime_base:become(meta_group(Qs, subst_nth(N, F, Fs), Ss, Cs, Ls, Es));
                 inspect -> % for debug
                     erlang:display([Qs, Fs, Ss, Cs, Ls]),
-                    runtime_base:become(meta_group(Qs, Fs, Ss, Cs, Ls, E));
+                    runtime_base:become(meta_group(Qs, Fs, Ss, Cs, Ls, Es));
                 {getState, From} -> % for debug
                     From ! {Qs, Fs, Ss, Cs, Ls},
-                    runtime_base:become(meta_group(Qs, Fs, Ss, Cs, Ls, E))
+                    runtime_base:become(meta_group(Qs, Fs, Ss, Cs, Ls, Es))
             end
     end.
 

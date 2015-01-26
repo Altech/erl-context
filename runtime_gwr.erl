@@ -17,16 +17,16 @@ new(F) ->
 
 new_group(Fs) ->
     N = length(Fs),
-    runtime_base:new(meta_group(replicate(N, []), Fs, replicate(N, dormant), runtime_base:new(fun exec/1))).
+    Es = lists:map(fun(_)-> runtime_base:new(fun exec/1) end, lists:seq(1,N)),
+    runtime_base:new(meta_group(replicate(N, []), Fs, replicate(N, dormant), Es)).
 
 become(F) ->
     case get(self) of
         undefined -> 
             runtime_base:become(F);
         {N, MetaG} ->
-            % Erlang及びアクターモデルではメッセージの送受信順序は保証されているので、
-            % たぶんこれで大丈夫。
-            MetaG ! {become, N, F, []};
+            MetaG ! {become, N, F, runtime_base:self(), []},
+            runtime_base:become(fun(end_become) -> ok end);
         _ ->
             runtime_base:become(F)
     end.
@@ -107,41 +107,39 @@ meta1(Q, F, S, E) ->
 	end
     end.
 
-meta_group(Qs, Fs, Ss, E) ->
+meta_group(Qs, Fs, Ss, Es) ->
   fun (RawM) ->
       case RawM of
 	{mesg, {N, M}, _} ->
 	  case nth(N, Ss) of
 	    dormant ->
 	      self() ! {'begin', N, []},
-	      runtime_base:become(meta_group(subst_nth(N, nth(N,Qs)++[M], Qs), Fs, subst_nth(N, active, Ss), E));
+	      runtime_base:become(meta_group(subst_nth(N, nth(N,Qs)++[M], Qs), Fs, subst_nth(N, active, Ss), Es));
 	    active ->
-	      runtime_base:become(meta_group(subst_nth(N, nth(N,Qs)++[M], Qs), Fs, subst_nth(N, active, Ss), E))
+	      runtime_base:become(meta_group(subst_nth(N, nth(N,Qs)++[M], Qs), Fs, subst_nth(N, active, Ss), Es))
 	  end;
 	{'begin', N, _} ->
-	  case nth(N, Qs) of
+          case nth(N, Qs) of
 	    [M|_Q] ->
-                  if M == 1 -> io:format("~p, ~n", [erlang:process_info(self(), memory)]);
-                     true -> nil
-                  end,
-	      E ! {apply, nth(N, Fs), M, self(), N},
-	      runtime_base:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, E))
+	      nth(N, Es) ! {apply, nth(N, Fs), M, self(), N},
+	      runtime_base:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, Es))
 	  end;
 	{'end', N, _} ->
 	  case nth(N, Qs) of
-	    [] -> runtime_base:become(meta_group(Qs, Fs, subst_nth(N, dormant, Ss), E));
+	    [] -> runtime_base:become(meta_group(Qs, Fs, subst_nth(N, dormant, Ss), Es));
 	    [_|_] ->
 	      self() ! {'begin', N, []},
-	      runtime_base:become(meta_group(Qs, Fs, Ss, E))
+	      runtime_base:become(meta_group(Qs, Fs, Ss, Es))
 	  end;
 	{new, F, From, _} ->
 	  N = length(Qs) + 1,
 	  From ! {N, self()}, % これダメじゃね
-	  runtime_base:become(meta_group(Qs++[[]], Fs++[F], Ss++[dormant], E));
-        {become, N, F, _} ->
-          runtime_base:become(meta_group(Qs, subst_nth(N, F, Fs), Ss, E));
+	  runtime_base:become(meta_group(Qs++[[]], Fs++[F], Ss++[dormant], Es));
+        {become, N, F, From, _} ->
+          From ! end_become,
+          runtime_base:become(meta_group(Qs, subst_nth(N, F, Fs), Ss, Es));
 	inspect -> % for debug
 	  erlang:display({Qs, Fs, Ss}),
-	  runtime_base:become(meta_group(Qs, Fs, Ss, E))
+	  runtime_base:become(meta_group(Qs, Fs, Ss, Es))
       end
   end.
