@@ -1,5 +1,6 @@
 -module(runtime).
 -export([new/1, send/2, become/1, new_group/1, usr_self/0, neighbor/1, send_delay/3]).
+-import(general,[nth/2, subst_nth/3, replicate/2]).
 
 %%%=========================================================================
 %%%  API
@@ -144,23 +145,3 @@ meta_group(Qs, Fs, Ss, E) ->
 	  core:become(meta_group(Qs, Fs, Ss, E))
       end
   end.
-
-%% ----------- Utils -----------
-
-nth(N, [H|T]) ->
-    case N of
-	1 -> H;
-	N when N > 1 -> nth(N-1, T)
-    end.
-
-subst_nth(N, V, Ls) ->
-    case {Ls, N} of
-	{[_|T], 1} -> [V|T];
-	{[H|T], N} when N > 1 -> [H|subst_nth(N-1, V, T)]
-    end.
-
-replicate(N, V) ->
-    case N of
-	0 -> [];
-	N when N > 0 -> [V|replicate(N-1, V)]
-    end.

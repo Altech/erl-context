@@ -1,5 +1,6 @@
 -module(runtime_ctx).
--export([new_group/1, send/2, new/1, send_context/2, send_delay/3, send_context_delay/3]).
+-export([new/1, send/2, new_group/1, send_delay/3, send_context/2, send_context_delay/3]).
+-import(general,[nth/2, subst_nth/3, replicate/2, element_after/2, tuple_reverse/1, add_elements/2]).
 
 %%%=========================================================================
 %%%  API
@@ -11,7 +12,7 @@ new(F) ->
 	    core:new(runtime:meta1([], F, dormant, core:new(fun exec/1)));
 	{_, MetaG} ->
 	    MetaG ! {new, F, self(), [{context, get(context)}]},
-	    core:become(fun(X) -> X end)
+	    core:become(fun(X) -> X end)  % 返り値を使用（注：モデルからの逸脱）
     end.
 
 new_group(Fs) ->
@@ -87,7 +88,7 @@ exec(Arg) ->
 	    put(self, From),
 	    apply(F, [M]),
 	    From ! 'end',
-	    core:become(fun exec1);
+	    core:become(fun exec/1);
         % From Group-Wide Meta-Level
 	{apply, F, M, From, N} ->
 	    put(self, {N, From}),
@@ -160,8 +161,10 @@ meta_group(Qs, Fs, Ss, Cs, Ls, E) ->
                     end;
                 {new, F, From, Ext} ->
                     N = length(Qs) + 1,
-                    From ! {N, self()},
+                    From ! {N, self()}, % これダメじゃね
                     core:become(meta_group(Qs++[[]], Fs++[F], Ss++[dormant], Cs++[proplists:get_value(context, Ext)], Ls++[log:new()], E));
+                {become, N, F, _} ->
+                    core:become(meta_group(Qs, subst_nth(N, F, Fs), Ss, Cs, Ls, E));
                 inspect -> % for debug
                     erlang:display([Qs, Fs, Ss, Cs, Ls]),
                     core:become(meta_group(Qs, Fs, Ss, Cs, Ls, E));
@@ -170,6 +173,10 @@ meta_group(Qs, Fs, Ss, Cs, Ls, E) ->
                     core:become(meta_group(Qs, Fs, Ss, Cs, Ls, E))
             end
     end.
+
+%%%=========================================================================
+%%%  Sub-Routines
+%%%=========================================================================
 
 cancel_messages_after({N, E}, Qs, Fs, Cs, Ls) ->
     [MesgsToCancel, MesgsToQueue] = collect_messages_to_cancel([{N, E}], ordsets:new(), ordsets:new(), Ls),
@@ -203,33 +210,4 @@ make_removed_log_list([{N, ID}|MesgList], Ls) ->
     make_removed_log_list(MesgList,
                           subst_nth(N,[_E || _E <- nth(N, Ls), log:message_ID(_E) /= ID],Ls)).
 
-%% ----------- Utils -----------
-
-nth(N, [H|T]) ->
-    case N of
-        1 -> H;
-        N when N > 1 -> nth(N-1, T)
-    end.
-
-subst_nth(N, V, Ls) ->
-    case {Ls, N} of
-        {[_|T], 1} -> [V|T];
-        {[H|T], N} when N > 1 -> [H|subst_nth(N-1, V, T)]
-    end.
-
-replicate(N, V) ->
-    case N of
-        0 -> [];
-        N when N > 0 -> [V|replicate(N-1, V)]
-    end.
-
-element_after(Pred, Ls) ->
-    hd(lists:dropwhile(Pred, Ls)).
-
 gen_ID() -> base64:encode(crypto:strong_rand_bytes(4)).
-
-tuple_reverse({E1, E2}) ->
-    {E2, E1}.
-
-add_elements(Ls, Set) ->
-    lists:foldl(fun(E, Set)-> ordsets:add_element(E, Set) end, Set, Ls).

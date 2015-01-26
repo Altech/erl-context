@@ -1,6 +1,7 @@
 -module(sensor_runtime).
 -export([main/1, setup/0]).
 -include("runtime.hrl").
+-import(lists,[foreach/2,map/2,foldr/3]).
 -import(general, [l/1, l/2, my_time/0]).
 -import(data, [get_network_data/0, get_children/2, get_parent/2, get_index_from_node/1]).
 
@@ -24,36 +25,36 @@ main([_]) ->
     end.
 
 broadcast(Addrs, Msg) ->
-    lists:foreach(fun (Addr) ->
-                          ?send(Addr,Msg)
-                  end, Addrs).
+    foreach(fun (Addr) ->
+                    ?send(Addr,Msg)
+            end, Addrs).
 
 setup() ->
     % 各ノードに相当するアクターを立ちあげ
     [Nodes, Edges] = get_network_data(),
-    Fs = lists:map(fun (Node) -> 
+    Fs = map(fun (Node) -> 
                            I = get_index_from_node(Node),
                            Children = get_children(Node, Edges),
                            Parent   = get_parent(Node, Edges),
                            node_behavior(I, Children, Parent, [])
                    end, Nodes),
     G = ?new_group(Fs),
-    NameToAddr = lists:map(fun (Node) -> 
-                                   I = get_index_from_node(Node),
-                                   {Node, {I+1, G}}
-                           end, Nodes),
+    NameToAddr = map(fun (Node) -> 
+                             I = get_index_from_node(Node),
+                             {Node, {I+1, G}}
+                     end, Nodes),
     % ネームサーバー（デバッグ用）
     name_server:setup(NameToAddr),
     % 各アクターの持つネットワーク参照を名前からアドレスに変更
     Addrs = maps:values(maps:from_list(NameToAddr)),
-    lists:foreach(fun (Addr) ->
-                          Map = maps:from_list([{'node-1', self()}|NameToAddr]),
-                          ?send(Addr, {setup, self(), Map}),
-                          receive 
-                              {mesg, finish_setup, _} -> ok;
-                              X -> error(X)
-                          end
-                  end, Addrs),
+    foreach(fun (Addr) ->
+                    Map = maps:from_list([{'node-1', self()}|NameToAddr]),
+                    ?send(Addr, {setup, self(), Map}),
+                    receive 
+                        {mesg, finish_setup, _} -> ok;
+                        X -> error(X)
+                    end
+            end, Addrs),
     Addrs.
 
 %%%=========================================================================
@@ -66,9 +67,9 @@ node_behavior(I, Children, Parent, ActorsAndVaues) ->
                 {setup, From, NameToAddr} ->
                     %% l("~p received ~p", [self_name(), {setup, From, NameToAddr}]),
                     [ParentAddr|ChildrenAddr] = 
-                        lists:map(fun (Child) -> 
-                                          maps:get(Child, NameToAddr) 
-                                  end, [Parent|Children]),
+                        map(fun (Child) -> 
+                                    maps:get(Child, NameToAddr) 
+                            end, [Parent|Children]),
                     {A, B, C} = now(), random:seed(A,B,C),
                     ?send(From, finish_setup),
                     ?become(node_behavior(I, ChildrenAddr, ParentAddr, ActorsAndVaues));
@@ -119,7 +120,7 @@ node_name(Addr) ->
 %%%=========================================================================
 
 summarize(ActorsAndVaues) ->
-    Sum = lists:foldr(fun (Value, Sum) ->
+    Sum = foldr(fun (Value, Sum) ->
                               Sum + Value
                       end, 
                       0, maps:values(maps:from_list(ActorsAndVaues))),
@@ -129,8 +130,8 @@ major(I) -> % Iはセンサーの値の期待値を変更するため
     random:uniform(round(25+(I/5))).
 
 major(N,I) ->
-    Sum = lists:foldr(fun (_, Sum) ->
-                              major(I) + Sum
-                      end,
-                      0 , lists:seq(1,N)),
+    Sum = foldr(fun (_, Sum) ->
+                        major(I) + Sum
+                end,
+                0 , lists:seq(1,N)),
     Sum / N.

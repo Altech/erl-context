@@ -1,10 +1,9 @@
--module(sensor_core).
+-module(sensor_runtime_ctx).
 -export([main/1, setup/0]).
--include("core.hrl").
+-include("runtime.hrl").
 -import(lists,[foreach/2,map/2,foldr/3]).
 -import(general, [l/1, l/2, my_time/0]).
 -import(data, [get_network_data/0, get_children/2, get_parent/2, get_index_from_node/1]).
--import(name_server, [setup/1, self_name/0, node_name/1]).
 
 -define(MAJOR_TIMES(I), ((I rem 3) + 1)*1000000).
 
@@ -33,12 +32,16 @@ broadcast(Addrs, Msg) ->
 setup() ->
     % 各ノードに相当するアクターを立ちあげ
     [Nodes, Edges] = get_network_data(),
+    Fs = map(fun (Node) -> 
+                           I = get_index_from_node(Node),
+                           Children = get_children(Node, Edges),
+                           Parent   = get_parent(Node, Edges),
+                           node_behavior(I, Children, Parent, [])
+                   end, Nodes),
+    G = ?new_group(Fs),
     NameToAddr = map(fun (Node) -> 
                              I = get_index_from_node(Node),
-                             Children = get_children(Node, Edges),
-                             Parent   = get_parent(Node, Edges),
-                             Addr = ?new(node_behavior(I, Children, Parent, [])),
-                             {Node, Addr}
+                             {Node, {I+1, G}}
                      end, Nodes),
     % ネームサーバー（デバッグ用）
     name_server:setup(NameToAddr),
@@ -48,7 +51,7 @@ setup() ->
                     Map = maps:from_list([{'node-1', self()}|NameToAddr]),
                     ?send(Addr, {setup, self(), Map}),
                     receive 
-                        finish_setup -> ok;
+                        {mesg, finish_setup, _} -> ok;
                         X -> error(X)
                     end
             end, Addrs),
@@ -62,6 +65,7 @@ node_behavior(I, Children, Parent, ActorsAndVaues) ->
     fun (Msg) ->
             case Msg of 
                 {setup, From, NameToAddr} ->
+                    %% l("~p received ~p", [self_name(), {setup, From, NameToAddr}]),
                     [ParentAddr|ChildrenAddr] = 
                         map(fun (Child) -> 
                                     maps:get(Child, NameToAddr) 
@@ -102,15 +106,24 @@ is_completed(Actors, ActorsAndVaues) ->
                       lists:member(Actor , ReceivedActors)
               end, Actors).
 
+self_name() ->
+    node_name(?self()).
+
+node_name(Addr) ->
+    case Addr of
+        {N,M} -> list_to_atom(lists:concat([node,N-1]));
+        _ -> Addr
+    end.
+
 %%%=========================================================================
 %%%  Computation
 %%%=========================================================================
 
 summarize(ActorsAndVaues) ->
     Sum = foldr(fun (Value, Sum) ->
-                        Sum + Value
-                end, 
-                0, maps:values(maps:from_list(ActorsAndVaues))),
+                              Sum + Value
+                      end, 
+                      0, maps:values(maps:from_list(ActorsAndVaues))),
     Sum / length(ActorsAndVaues).
 
 major(I) -> % Iはセンサーの値の期待値を変更するため
