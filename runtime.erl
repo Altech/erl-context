@@ -1,5 +1,5 @@
 -module(runtime).
--export([new/1, send/2, new_group/1, usr_self/0, neighbor/1, change_behavior/2, send_delay/3]).
+-export([new/1, send/2, become/1, new_group/1, usr_self/0, neighbor/1, send_delay/3]).
 
 %%%=========================================================================
 %%%  API
@@ -11,12 +11,24 @@ new(F) ->
 	    core:new(meta1([], F, dormant, core:new(fun exec/1)));
 	{_, MetaG} ->
 	    MetaG ! {new, F, self(), []},
-	    core:become(fun(X) -> X end)
+	    core:become(fun(X) -> X end) % 返り値を使用（注：モデルからの逸脱）
     end.
 
 new_group(Fs) ->
     N = length(Fs),
     core:new(meta_group(replicate(N, []), Fs, replicate(N, dormant), core:new(fun exec/1))).
+
+become(F) ->
+    case get(self) of
+        undefined -> 
+            core:become(F);
+        {N, MetaG} ->
+            % Erlang及びアクターモデルではメッセージの送受信順序は保証されているので、
+            % たぶんこれで大丈夫。
+            MetaG ! {become, N, F, []};
+        _ ->
+            core:become(F)
+    end.
 
 %% send V to {N1, ... {Nn, M}} is 
 send(Dest, Msg) ->
@@ -35,9 +47,6 @@ neighbor(N) ->
     case get(self) of
 	{_, MetaG} -> {N, MetaG}
     end.
-
-change_behavior(F, {N, MetaG}) ->
-    MetaG ! {update, N, F}.
 
 % For Experiments
 send_delay(Dest, Msg, Delay) ->    
@@ -126,10 +135,10 @@ meta_group(Qs, Fs, Ss, E) ->
 	  end;
 	{new, F, From, _} ->
 	  N = length(Qs) + 1,
-	  From ! {N, self()},
+	  From ! {N, self()}, % これダメじゃね
 	  core:become(meta_group(Qs++[[]], Fs++[F], Ss++[dormant], E));
-	{change_behavior, N, F} ->
-	  core:become(meta_group(Qs, subst_nth(N, F, Fs), Ss, E));
+        {become, N, F, _} ->
+          core:become(meta_group(Qs, subst_nth(N, F, Fs), Ss, E));
 	inspect -> % for debug
 	  erlang:display({Qs, Fs, Ss}),
 	  core:become(meta_group(Qs, Fs, Ss, E))

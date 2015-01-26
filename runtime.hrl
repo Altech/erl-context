@@ -1,7 +1,7 @@
 -define(send(Dest, Msg), runtime:send(Dest, Msg)).
 -define(new(F), runtime:new(F)).
 -define(new_group(Fs), runtime:new_group(Fs)).
--define(change_behavior(F, Self), runtime:change_behavior(F, Self)).
+-define(become(F), runtime:become(F)).
 -define(self(), runtime:usr_self()).
 -define(neighbor(N), runtime:neighbor(N)).
 
