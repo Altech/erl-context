@@ -3,10 +3,20 @@
 require 'colorize'
 require 'fileutils'
 
-runtime = :gwrc
-app = :sensor
+case ARGV.size
+when 1
+  main_module = ARGV.first
+when 2
+  runtime = ARGV[0]
+  app = ARGV[1]
+  main_module = "#{app}_#{runtime}"
+else
+  raise "Please specify argument."
+end
 
-main_module = "#{app}_#{runtime}"
+unless File.exists? "#{main_module}.erl"
+  raise "Modoule not found."
+end
 
 def compile(erl)
   puts "Compile(#{erl})".blue
@@ -43,4 +53,4 @@ else
   end
 end
 
-exec "erl -run #{main_module} main 1"
+exec "erl -run #{main_module} main a"

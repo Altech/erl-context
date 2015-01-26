@@ -5,7 +5,8 @@
 -include("runtime_gwrc.hrl").
 
 %% Simple application for cross-context messages type (a)
-start([Type]) ->
+main([TypeStr]) ->
+    Type = list_to_atom(TypeStr),
     G = ?new_group([fun cross_simple:apO/1, fun cross_simple:apA/1, fun cross_simple:apB/1]),
     [O, A, B] = [{1, G}, {2, G}, {3, G}],
     ?send(O, {start, {A, B}, Type}),

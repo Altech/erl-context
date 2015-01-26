@@ -8,4 +8,5 @@ Code for my graduate research(Actor Model, Group-Wide-Reflection, Context-Orient
   - runtime_gwrc : add state for context-oriented programming to runime_gwr
 - threadring_* : app for micro benchmark
 - sensor_* : app for evaluation including rollback
+- cross_* : example of cross-context message
 - othres : sub modules
