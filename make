@@ -15,7 +15,7 @@ else
 end
 
 unless File.exists? "#{main_module}.erl"
-  raise "Modoule not found."
+  raise "Modoule not found(#{main_module}.erl})."
 end
 
 def compile(erl)

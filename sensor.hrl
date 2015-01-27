@@ -3,3 +3,8 @@
 -import(sensor_data, [get_network_data/0, get_children/2, get_parent/2, get_index_from_node/1]).
 
 -define(MAJOR_TIMES(I), ((I rem 3) + 1)*1000000).
+
+broadcast(Addrs, Msg) ->
+    foreach(fun (Addr) ->
+                    ?send(Addr,Msg)
+            end, Addrs).

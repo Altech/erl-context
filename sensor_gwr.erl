@@ -1,7 +1,7 @@
 -module(sensor_gwr).
 -export([main/1, setup/0]).
--include("sensor.hrl").
 -include("runtime_gwr.hrl").
+-include("sensor.hrl").
 
 %%%=========================================================================
 %%%  Setup
@@ -11,19 +11,9 @@ main([_]) ->
     timer:sleep(200),
     io:fwrite("~n"),
     l("setup: started",[]),
-    Addrs = setup(),
+    Root = setup(),
     l("setup: finished",[]),
-    broadcast(Addrs, get_sensor_data),
-    receive 
-        Result -> 
-            l("main received ~p",[Result]),
-            io:fwrite("1> ")
-    end.
-
-broadcast(Addrs, Msg) ->
-    foreach(fun (Addr) ->
-                    ?send(Addr,Msg)
-            end, Addrs).
+    ?send(Root, start).
 
 setup() ->
     % 各ノードに相当するアクターを立ちあげ
@@ -34,28 +24,44 @@ setup() ->
                            Parent   = get_parent(Node, Edges),
                            node_behavior(I, Children, Parent, [])
                    end, Nodes),
-    G = ?new_group(Fs),
-    NameToAddr = map(fun (Node) -> 
-                             I = get_index_from_node(Node),
-                             {Node, {I+1, G}}
-                     end, Nodes),
-    % ネームサーバー（デバッグ用）
-    name_server:setup(NameToAddr),
-    % 各アクターの持つネットワーク参照を名前からアドレスに変更
+    G = ?new_group([root_behavior([])|Fs]),
+    NameToAddrSansRoot = map(fun (Node) -> 
+                                     I = get_index_from_node(Node),
+                                     {Node, {I+1, G}}
+                             end, Nodes),
+    RootAddr = {1, G},
+    NameToAddr = [{'node0', RootAddr}|NameToAddrSansRoot],
     Addrs = maps:values(maps:from_list(NameToAddr)),
+    % 各アクターの持つネットワーク参照を名前からアドレスに変更
     foreach(fun (Addr) ->
-                    Map = maps:from_list([{'node-1', self()}|NameToAddr]),
+                    Map = maps:from_list(NameToAddr),
                     ?send(Addr, {setup, self(), Map}),
                     receive 
                         {mesg, finish_setup, _} -> ok;
                         X -> error(X)
                     end
             end, Addrs),
-    Addrs.
+    RootAddr.
 
 %%%=========================================================================
 %%%  Behaviors
 %%%=========================================================================
+
+root_behavior(Addrs) ->
+    fun (Msg) -> 
+            case Msg of 
+                {setup, From, Map} ->
+                    AddrsSansSelf = maps:values(maps:remove('node0', Map)),
+                    ?send(From, finish_setup),
+                    ?become(root_behavior(AddrsSansSelf));
+                start ->
+                    broadcast(Addrs, get_sensor_data),
+                    ?become(root_behavior(Addrs));
+                _ ->
+                    l("root received ~p",[Msg]),
+                    ?become(root_behavior(Addrs))
+            end
+    end.
 
 node_behavior(I, Children, Parent, ActorsAndVaues) ->
     fun (Msg) ->

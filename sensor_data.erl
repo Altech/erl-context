@@ -2,8 +2,8 @@
 -export([get_network_data/0, get_children/2, get_parent/2, get_index_from_node/1]).
 
 get_network_data() ->
-    NumNodes = lists:seq(0,6),
-    NumEdges = [[5,4],[6,4],[4,2],[3,2],[2,1],[1,0],[0,-1]],
+    NumNodes = lists:seq(1,7),
+    NumEdges = [[6,5],[7,5],[5,3],[4,3],[3,2],[2,1],[1,0]],
     [
      lists:map(fun (NumNode) -> 
                        list_to_atom(lists:concat([node, NumNode])) 
