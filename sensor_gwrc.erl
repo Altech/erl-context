@@ -25,6 +25,7 @@ setup() ->
                            node_behavior(I, Children, Parent, [])
                    end, Nodes),
     G = ?new_group([root_behavior([])|Fs]),
+    register(meta, G), % for debug
     NameToAddrSansRoot = map(fun (Node) -> 
                                      I = get_index_from_node(Node),
                                      {Node, {I+1, G}}
@@ -61,12 +62,14 @@ root_behavior(Addrs) ->
                 start_with_context ->
                     ?set_context(arithmetic),
                     broadcast(Addrs, get_sensor_data),
-                    ?set_context(geometric),
+                    ?send(?self(), next_context),
+                    ?become(root_behavior(Addrs));
+                next_context ->
+                    ?set_context(geometricc),
                     broadcast(Addrs, get_sensor_data),
                     ?become(root_behavior(Addrs));
                 _ ->
-                    l("root received ~p",[Msg]),
-                    ?become(root_behavior(Addrs))
+                    l("root received ~p",[Msg])
             end
     end.
 
@@ -83,15 +86,15 @@ node_behavior(I, Children, Parent, ActorsAndVaues) ->
                     ?send(From, finish_setup),
                     ?become(node_behavior(I, ChildrenAddr, ParentAddr, ActorsAndVaues));
                 get_sensor_data ->
-                    l("~p received ~p", [self_name(), get_sensor_data]),
-                    l("~p major ~p times", [self_name(), (((I rem 3) + 1)*1000000)]),
+                    l("(~p) ~p received ~p", [?self_context(), self_name(), get_sensor_data]),
+                    %% l("~p major ~p times", [?self_context(), self_name(), (((I rem 3) + 1)*1000000)]),
                     Value = major(?MAJOR_TIMES(I), I),
-                    l("~p majored", [self_name()]),
+                    %% l("~p majored", [self_name()]),
                     NewActorsAndVaues = [{?self(), Value}|ActorsAndVaues],
                     node_behavior_rest(I, Children, Parent, NewActorsAndVaues);
                 {sensor, From, Value} ->
                     NewActorsAndVaues = [{From, Value}|ActorsAndVaues],
-                    l("~p received ~p", [self_name(), {sensor, node_name(From), Value}]),
+                    l("(~p) ~p received ~p", [?self_context(), self_name(), {sensor, node_name(From), Value}]),
                     node_behavior_rest(I, Children, Parent, NewActorsAndVaues)
             end
     end.
@@ -131,18 +134,18 @@ node_name(Addr) ->
 summarize(ActorsAndVaues) ->
     case ?self_context() of
         arithmetic -> 
-            l("arithmetic mean!"),
+            %% l("arithmetic mean!"),
             Sum = foldr(fun (Value, Sum) ->
                                 Sum + Value
                         end, 
                         0, maps:values(maps:from_list(ActorsAndVaues))),
             Sum / length(ActorsAndVaues);
-        geometric ->
-            l("geometric mean!"),
+        geometricc ->
             Sum = foldr(fun (Value, Sum) ->
                                 Sum * Value
                         end, 
-                        0, maps:values(maps:from_list(ActorsAndVaues))),
+                        1, maps:values(maps:from_list(ActorsAndVaues))),
+            %% l("geometricc mean!"),
             general:nth_root(length(ActorsAndVaues), Sum)
     end.
 

@@ -44,8 +44,18 @@ after_function(E) ->
     {C, F} = element(4, E),
     F.
 
+processing(E)  ->
+    case tuple_size(E) of
+        3 -> true;
+        5 -> false
+    end.
+
 lookup(ID, L) ->
-    hd([E || E <- L, message_ID(E) == ID]).
+    Ls = [E || E <- L, message_ID(E) == ID],
+    case Ls of
+        [E|_] -> E;
+        _ -> not_found
+    end.
 
 lookup_with_index(ID, L) ->
     I = length(lists:takewhile(fun(E)-> message_ID(E) /= ID end, L)),

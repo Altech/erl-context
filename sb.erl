@@ -5,13 +5,21 @@ start(S) ->
     put(stateOfGroupActor, S).
 
 show_log(L) ->
-    lists:map(fun({ID, M, Before, After, Ms}) ->
-		      io:format(" ID: ~p~n", [ID]),
-		      io:format(" Message: ~p~n",[M]),
-		      io:format(" State(Before): ~p~n", [Before]),
-		      io:format(" State(After):  ~p~n", [After]),
-		      if Ms /= [] -> io:format(" Sent Messages: ~p~n", [lists:reverse(Ms)]); true -> nil end,
-		      io:format(" -------------------------------------------------------~n",[])
+    lists:map(fun(E) ->
+                      case E of 
+                          {ID, M, Before, After, Ms} ->
+                              io:format(" ID: ~p~n", [ID]),
+                              io:format(" Message: ~p~n",[M]),
+                              io:format(" State(Before): ~p~n", [Before]),
+                              io:format(" State(After):  ~p~n", [After]),
+                              if Ms /= [] -> io:format(" Sent Messages: ~p~n", [lists:reverse(Ms)]); true -> nil end,
+                              io:format(" -------------------------------------------------------~n",[]);
+                          {ID, M, Before} ->
+                              io:format(" ID: ~p~n", [ID]),
+                              io:format(" Message: ~p~n",[M]),
+                              io:format(" State(Before): ~p~n", [Before]),
+                              io:format(" -------------------------------------------------------~n",[])
+                      end
 	      end, lists:reverse(L)),
     nil.
 

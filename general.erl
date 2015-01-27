@@ -1,5 +1,5 @@
 -module(general).
--export([nth/2, subst_nth/3, replicate/2, element_after/2, tuple_reverse/1, add_elements/2, l/1, nth_root/2, l/2, my_time/0]).
+-export([nth/2, subst_nth/3, replicate/2, element_after/2, tuple_reverse/1, remove_duplicate/1, add_elements/2, nth_root/2, l/1, l/2, my_time/0]).
 
 nth(N, [H|T]) ->
     case N of
@@ -24,6 +24,9 @@ element_after(Pred, Ls) ->
 
 tuple_reverse({E1, E2}) ->
     {E2, E1}.
+
+remove_duplicate(Ls) ->
+  sets:to_list(sets:from_list(Ls)).
 
 add_elements(Ls, Set) ->
     lists:foldl(fun(E, Set)-> ordsets:add_element(E, Set) end, Set, Ls).
