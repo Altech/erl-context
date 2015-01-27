@@ -13,7 +13,7 @@ main([_]) ->
     l("setup: started",[]),
     Root = setup(),
     l("setup: finished",[]),
-    ?send(Root, start).
+    ?send(Root, start_with_context).
 
 setup() ->
     % 各ノードに相当するアクターを立ちあげ
@@ -55,6 +55,13 @@ root_behavior(Addrs) ->
                     ?send(From, finish_setup),
                     ?become(root_behavior(AddrsSansSelf));
                 start ->
+                    ?set_context(arithmetic),
+                    broadcast(Addrs, get_sensor_data),
+                    ?become(root_behavior(Addrs));
+                start_with_context ->
+                    ?set_context(arithmetic),
+                    broadcast(Addrs, get_sensor_data),
+                    ?set_context(geometric),
                     broadcast(Addrs, get_sensor_data),
                     ?become(root_behavior(Addrs));
                 _ ->
@@ -122,11 +129,22 @@ node_name(Addr) ->
 %%%=========================================================================
 
 summarize(ActorsAndVaues) ->
-    Sum = foldr(fun (Value, Sum) ->
-                              Sum + Value
-                      end, 
-                      0, maps:values(maps:from_list(ActorsAndVaues))),
-    Sum / length(ActorsAndVaues).
+    case ?self_context() of
+        arithmetic -> 
+            l("arithmetic mean!"),
+            Sum = foldr(fun (Value, Sum) ->
+                                Sum + Value
+                        end, 
+                        0, maps:values(maps:from_list(ActorsAndVaues))),
+            Sum / length(ActorsAndVaues);
+        geometric ->
+            l("geometric mean!"),
+            Sum = foldr(fun (Value, Sum) ->
+                                Sum * Value
+                        end, 
+                        0, maps:values(maps:from_list(ActorsAndVaues))),
+            general:nth_root(length(ActorsAndVaues), Sum)
+    end.
 
 major(I) -> % Iはセンサーの値の期待値を変更するため
     random:uniform(round(25+(I/5))).

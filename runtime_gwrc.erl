@@ -1,5 +1,5 @@
 -module(runtime_gwrc).
--export([new/1, send/2, new_group/1, send_delay/3, send_context/2, send_context_delay/3]).
+-export([new/1, send/2, new_group/1, send_delay/3, send_context/2, send_context_delay/3, set_context/1, self_context/0]).
 -import(general,[nth/2, subst_nth/3, replicate/2, element_after/2, tuple_reverse/1, add_elements/2]).
 
 %%%=========================================================================
@@ -40,6 +40,23 @@ send_context(Dest, Context) ->
                                        _Dest ! {mesg, {N, Context}, [{id, ID}, {context, message}]}
 		      end;
 	_ -> Dest ! {mesg, Context, []}
+    end.
+
+set_context(ContextValue) ->
+    case {get(self), get(context)} of
+        {{N, MetaG}, {'$context', _}} ->
+            C = context:new(ContextValue),
+            put(context, C),
+            MetaG ! {set_context, N, C, runtime_base:self(), []},
+            runtime_base:become(fun(end_context) -> ok end);
+        _ -> failure
+    end.
+
+self_context() ->
+    C = get(context),
+    case C of
+        {'$context', _} -> context:value(C);
+        _ -> none
     end.
 
 % For Experiments
@@ -167,6 +184,9 @@ meta_group(Qs, Fs, Ss, Cs, Ls, Es) ->
                 {become, N, F, From, _} ->
                     From ! end_become,
                     runtime_base:become(meta_group(Qs, subst_nth(N, F, Fs), Ss, Cs, Ls, Es));
+                {set_context, N, C, From, _} ->
+                    From ! end_context,
+                    runtime_base:become(meta_group(Qs, Fs, Ss, subst_nth(N, C, Cs), Ls, Es));
                 inspect -> % for debug
                     erlang:display([Qs, Fs, Ss, Cs, Ls]),
                     runtime_base:become(meta_group(Qs, Fs, Ss, Cs, Ls, Es));
