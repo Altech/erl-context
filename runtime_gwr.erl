@@ -7,105 +7,105 @@
 %%%=========================================================================
 
 new(F) ->
-    case get(self) of
-	undefined -> 
-	    runtime_base:new(meta1([], F, dormant, runtime_base:new(fun exec/1)));
-	{_, MetaG} ->
-	    MetaG ! {new, F, self(), []},
-	    runtime_base:become(fun(X) -> X end) % 返り値を使用（注：モデルからの逸脱）
-    end.
+  case get(self) of
+    undefined -> 
+      runtime_base:new(meta1([], F, dormant, runtime_base:new(fun exec/1)));
+    {_, MetaG} ->
+      MetaG ! {new, F, self(), []},
+      runtime_base:become(fun(X) -> X end) % 返り値を使用（注：モデルからの逸脱）
+  end.
 
 new_group(Fs) ->
-    N = length(Fs),
-    Es = lists:map(fun(_)-> runtime_base:new(fun exec/1) end, lists:seq(1,N)),
-    runtime_base:new(meta_group(replicate(N, []), Fs, replicate(N, dormant), Es)).
+  N = length(Fs),
+  Es = lists:map(fun(_)-> runtime_base:new(fun exec/1) end, lists:seq(1,N)),
+  runtime_base:new(meta_group(replicate(N, []), Fs, replicate(N, dormant), Es)).
 
 become(F) ->
-    case get(self) of
-        undefined -> 
-            runtime_base:become(F);
-        {N, MetaG} ->
-            MetaG ! {become, N, F, runtime_base:self(), []},
-            runtime_base:become(fun(end_become) -> ok end);
-        _ ->
-            runtime_base:become(F)
-    end.
+  case get(self) of
+    undefined -> 
+      runtime_base:become(F);
+    {N, MetaG} ->
+      MetaG ! {become, N, F, runtime_base:self(), []},
+      runtime_base:become(fun(end_become) -> ok end);
+    _ ->
+      runtime_base:become(F)
+  end.
 
 %% send V to {N1, ... {Nn, M}} is 
 send(Dest, Msg) ->
-    case Dest of 
-	{N, _Dest} -> _Dest ! {mesg, {N, Msg}, []};
-	_ -> Dest ! {mesg, Msg, []}
-    end.
+  case Dest of 
+    {N, _Dest} -> _Dest ! {mesg, {N, Msg}, []};
+    _ -> Dest ! {mesg, Msg, []}
+  end.
 
 usr_self() -> 
-    case get(self) of
-	undefined -> self();
-	Self -> Self
-    end.
+  case get(self) of
+    undefined -> self();
+    Self -> Self
+  end.
 
 neighbor(N) ->
-    case get(self) of
-	{_, MetaG} -> {N, MetaG}
-    end.
+  case get(self) of
+    {_, MetaG} -> {N, MetaG}
+  end.
 
 % For Experiments
 send_delay(Dest, Msg, Delay) ->    
-    spawn(fun() -> 
-		  timer:sleep(Delay),
-		  case Dest of 
-		      {N, _Dest} -> _Dest ! {mesg, {N, Msg}, []};
-		      _ -> Dest ! {mesg, Msg, []}
-		  end
-	  end).
+  spawn(fun() -> 
+            timer:sleep(Delay),
+            case Dest of 
+              {N, _Dest} -> _Dest ! {mesg, {N, Msg}, []};
+              _ -> Dest ! {mesg, Msg, []}
+            end
+        end).
 
 %%%=========================================================================
 %%%  Internal Function
 %%%=========================================================================
 
 exec(Arg) ->
-    %% io:format("engine received ~p.~n",[Arg]),
-    case Arg of
-	% From Per-Actor Meta-Level
-	{apply, F, M, From} ->
-	    put(self, From),
-	    apply(F, [M]),
-	    From ! {'end', []},
-	    runtime_base:become(fun exec/1);
-	% From Group-Wide Meta-Level
-	{apply, F, M, From, N} ->
-	    put(self, {N, From}),
-	    apply(F, [M]),
-	    From ! {'end', N, []},
-	    runtime_base:become(fun exec/1)    
-    end.
+  %% io:format("engine received ~p.~n",[Arg]),
+  case Arg of
+    % From Per-Actor Meta-Level
+    {apply, F, M, From} ->
+      put(self, From),
+      apply(F, [M]),
+      From ! {'end', []},
+      runtime_base:become(fun exec/1);
+    % From Group-Wide Meta-Level
+    {apply, F, M, From, N} ->
+      put(self, {N, From}),
+      apply(F, [M]),
+      From ! {'end', N, []},
+      runtime_base:become(fun exec/1)    
+  end.
 
 meta1(Q, F, S, E) ->
-    fun (RawM) ->
-	case RawM of
-	    {mesg, M, []} ->
-		case S of
-		    dormant ->
-			self() ! {'begin', []},
-			runtime_base:become(meta1(Q++[M], F, active, E));
-		    active ->
-			runtime_base:become(meta1(Q++[M], F, active, E))
-		end;
-	    {'begin', []} ->
-		case Q of
-		    [M|_Q] ->
-			E ! {apply, F, M, self()},
-			runtime_base:become(meta1(_Q, F, S, E))
-		    end;
-	    {'end', []} ->
-		case Q of
-		    [] -> runtime_base:become(meta1(Q, F, dormant, E));
-		    [_|_] ->
-			self() ! {'begin', []},
-			runtime_base:become(meta1(Q, F, S, E))
-		end
-	end
-    end.
+  fun (RawM) ->
+      case RawM of
+        {mesg, M, []} ->
+          case S of
+            dormant ->
+              self() ! {'begin', []},
+              runtime_base:become(meta1(Q++[M], F, active, E));
+            active ->
+              runtime_base:become(meta1(Q++[M], F, active, E))
+          end;
+        {'begin', []} ->
+          case Q of
+            [M|_Q] ->
+              E ! {apply, F, M, self()},
+              runtime_base:become(meta1(_Q, F, S, E))
+          end;
+        {'end', []} ->
+          case Q of
+            [] -> runtime_base:become(meta1(Q, F, dormant, E));
+            [_|_] ->
+              self() ! {'begin', []},
+              runtime_base:become(meta1(Q, F, S, E))
+          end
+      end
+  end.
 
 meta_group(Qs, Fs, Ss, Es) ->
   fun (RawM) ->
