@@ -7,13 +7,13 @@
 %%%  Setup
 %%%=========================================================================
 
-main([_]) ->
+main([Cmd]) ->
   timer:sleep(200),
   io:fwrite("~n"),
   l("setup: started",[]),
   Root = setup(),
   l("setup: finished",[]),
-  ?send(Root, start_with_context).
+  ?send(Root, list_to_atom(Cmd)).
 
 setup() ->
   % 各ノードに相当するアクターを立ちあげ
@@ -24,7 +24,7 @@ setup() ->
                Parent   = get_parent(Node, Edges),
                node_behavior(I, Children, Parent, [])
            end, Nodes),
-  G = ?new_group([root_behavior([])|Fs]),
+  G = ?new_group([root_behavior([],0)|Fs]),
   register(meta, G), % for debug
   NameToAddrSansRoot = map(fun (Node) -> 
                                I = get_index_from_node(Node),
@@ -48,28 +48,33 @@ setup() ->
 %%%  Behaviors
 %%%=========================================================================
 
-root_behavior(Addrs) ->
+root_behavior(Addrs, N) ->
   fun (Msg) -> 
       case Msg of 
         {setup, From, Map} ->
           AddrsSansSelf = maps:values(maps:remove('node0', Map)),
           ?send(From, finish_setup),
-          ?become(root_behavior(AddrsSansSelf));
+          ?become(root_behavior(AddrsSansSelf, 0));
         start ->
           ?set_context(arithmetic),
           broadcast(Addrs, get_sensor_data),
-          ?become(root_behavior(Addrs));
+          ?become(root_behavior(Addrs, 1));
         start_with_context ->
           ?set_context(arithmetic),
           broadcast(Addrs, get_sensor_data),
           ?send(?self(), next_context),
-          ?become(root_behavior(Addrs));
+          ?become(root_behavior(Addrs, 2));
         next_context ->
           ?set_context(geometricc),
           broadcast(Addrs, get_sensor_data),
-          ?become(root_behavior(Addrs));
+          ?become(root_behavior(Addrs, N));
         _ ->
-          l("root received ~p",[Msg])
+          l("root received ~p",[Msg]),
+          if N == 1 -> 
+              erlang:halt();
+             true -> 
+              ?become(root_behavior(Addrs, N-1))
+          end
       end
   end.
 

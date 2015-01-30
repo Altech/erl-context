@@ -26,7 +26,7 @@ send(Dest, Msg) ->
     {N, _Dest} -> case get(context) of
                     undefined -> _Dest ! {mesg, {N, Msg}, []};
                     _ ->         ID = gen_ID(),
-                                 l("(~p) node~p -> node~p ~p",[self_context(), element(1,get(self))-1, N-1,Msg]),
+                                 % l("(~p) node~p -> node~p ~p",[self_context(), element(1,get(self))-1, N-1,Msg]),
                                  put(sent_messages, [{Dest, {ID, Msg}}| get(sent_messages)]),
                                  _Dest ! {mesg, {N, Msg}, [{id, ID}, {context, get(context)}]}
                   end;

@@ -59,6 +59,7 @@ root_behavior(Addrs) ->
           ?become(root_behavior(Addrs));
         _ ->
           l("root received ~p",[Msg]),
+          erlang:halt(),
           ?become(root_behavior(Addrs))
       end
   end.
