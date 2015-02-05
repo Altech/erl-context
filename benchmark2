@@ -1,0 +1,85 @@
+#!/usr/bin/env ruby
+
+require 'colorize'
+require 'open3'
+
+runtimes = {
+  'Simple Actor Language' => 'base',
+  'Group-Wide Reflective Simple Actor Language' => 'gwr',
+  'Context-Oriented Group-Wide Reflective Simple Actor Language' => 'gwrc'
+}
+
+TRIAL = 3
+
+def compile(module_name, macros = {})
+  macro_args = macros.map{|k,v| "-D#{k}=#{v}"}.join(" ")
+  command = "erlc #{macro_args} #{module_name}.erl"
+  status = system(command)
+  if !status
+    puts "Failure(#{command})!".red
+    exit!
+  end
+end
+
+def measure(module_name, arg, memory = false)
+  real, user, sys = 0.0, 0.0, 0.0
+  TRIAL.times do
+    command = "/usr/bin/time -p erl -smp disabled -noshell -run #{module_name} main #{arg}"
+    stdin, stdout, stderr = Open3.popen3(command)
+    if memory
+      puts stdout.read
+      return 1
+    end
+    r, u, s = stderr.read.split("\n").map{|l| l.split(/\s+/)}.map(&:last).map(&:to_f)
+    real += r; user += u; sys += s
+  end
+  real /= TRIAL; user /= TRIAL; sys /= TRIAL
+  return user
+end
+
+compile '*', RING: 2, MESSAGES: 1
+system 'clear'
+
+ring = 2
+times = 1000000
+puts 'ping-pong, time'
+runtimes.each do |label, runtime|
+  module_name = "threadring_#{runtime}"
+  print label
+  compile(module_name, RING: ring, MESSAGES: 1)
+  time = measure(module_name, times)
+  print ", #{time}"
+  print "\n"
+end
+
+print "\n"
+
+ring = 100
+times = 100000*2
+max_messages = 25
+label = 1.upto(max_messages).to_a.map{|i| "#{i}"}.join(", ")
+puts "threadring, #{label}"
+runtimes.each do |label, runtime|
+  module_name = "threadring_#{runtime}"
+  print label
+  1.upto(max_messages) do |i|
+    compile(module_name, RING: ring, MESSAGES: i)
+    time = measure(module_name, times / i)
+    print ", #{time}"
+  end
+  print "\n"
+end
+
+print "\n"
+
+# sensor scale : 1000000
+puts 'sensor_network, time'
+runtimes.each do |label, runtime|
+  module_name = "sensor_#{runtime}"
+  print label
+  compile(module_name, BENCH: true)
+  time = measure(module_name, 'start')
+  print ", #{time}"
+  print "\n"
+end
+

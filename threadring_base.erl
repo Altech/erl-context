@@ -8,18 +8,27 @@ start(Token) ->
       fun(Id, Pid) -> ?new(roundtrip_gen(Id, Pid)) end,
       self(), 
       lists:seq(?RING, 2, -1)),
-   ?send(H, Token),
-   ?become(roundtrip_gen(1, H)).
+  lists:foreach(fun (_) -> 
+                    ?send(H, Token)
+                end, lists:seq(1, ?MESSAGES)),
+  ?become(roundtrip_gen(1, H)).
 
 roundtrip_gen(Id, Pid) ->
-    fun (Token) ->
-            case Token of
-                1 -> io:fwrite("~b~n", [Id]),
-                     erlang:halt();
-                _ -> ?send(Pid, Token - 1),
-                     ?become(roundtrip_gen(Id, Pid))
-            end
-    end.
+  fun (Token) ->
+      case Token of
+        1 -> io:fwrite("count:~p, id:~b~n", [get(count), Id]),
+             N = case get(count) of 
+                   undefined -> 1;
+                   M -> M+1
+                 end,
+             case N < ?MESSAGES of
+               true -> put(count,N);
+               false -> erlang:halt()
+             end;
+        _ -> ?send(Pid, Token - 1)
+      end,
+      ?become(roundtrip_gen(Id, Pid))
+  end.
 
 main([Arg]) ->
    Token = list_to_integer(Arg),

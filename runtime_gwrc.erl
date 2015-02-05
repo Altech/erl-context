@@ -191,7 +191,7 @@ meta_group_begin(RawM, Qs, Fs, Ss, Cs, Ls, Es, Rb) ->
           NewLs = subst_nth(N, log:log_before(L, proplists:get_value(id, Ext), {M, Ext}, C, F), Ls),
           runtime_base:become(meta_group(subst_nth(N, _Q, Qs), Fs, Ss, subst_nth(N, WithC, Cs), NewLs, Es, Rb));
         older ->
-          io:fwrite("<rollback> by ~p to node~p~n",[M,N-1]),
+          io:fwrite("<rollback> message ~p from node(~p) to node~p(~p)~n",[M,context:value(WithC),N-1,context:value(C)]),
           MesgToCancel = element_after(fun(Elm) -> context:compare(WithC, log:before_context(Elm)) == newer end, L),
           %% io:fwrite(" cancel_messages_after(~p|~p)~n", [log:message_ID(MesgToCancel), element(1, log:message(MesgToCancel))]),
           V = cancel_messages_after({N, MesgToCancel}, subst_nth(N, _Q, Qs), Fs, Cs, Ls),
